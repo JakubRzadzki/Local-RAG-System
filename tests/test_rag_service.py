@@ -47,18 +47,35 @@ class FakeOllama:
         yield "Hi"
         yield " there"
 
+    async def chat_once(
+        self,
+        model: str,
+        messages: Sequence[Mapping[str, str]],
+        think: bool | None,
+        max_tokens: int,
+    ) -> str:
+        return "Which planet is the largest?"
+
 
 class FakeEmbeddings:
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
     async def embed_query(self, query: str) -> list[float]:
+        self.queries.append(query)
         return [0.0]
 
 
-def _service(conversations: FakeConversations, min_score: float) -> RagService:
+def _service(
+    conversations: FakeConversations,
+    min_score: float,
+    embeddings: FakeEmbeddings | None = None,
+) -> RagService:
     return RagService(
         FakeChunks(),  # type: ignore[arg-type]
         conversations,  # type: ignore[arg-type]
         FakeOllama(),  # type: ignore[arg-type]
-        FakeEmbeddings(),  # type: ignore[arg-type]
+        embeddings or FakeEmbeddings(),  # type: ignore[arg-type]
         None,  # type: ignore[arg-type]
         min_score,
     )
@@ -87,3 +104,29 @@ async def test_user_message_and_full_answer_are_saved() -> None:
     service = _service(conversations, min_score=0.6)
     _ = [e async for e in service.stream_answer(_request())]
     assert conversations.messages == [("user", "hello?"), ("assistant", "Hi there")]
+
+
+async def test_follow_up_retrieves_with_the_rewritten_query_but_saves_the_original() -> None:
+    embeddings, conversations = FakeEmbeddings(), FakeConversations()
+    request = ChatRequest(
+        model="m",
+        messages=[
+            ChatMessage(role="user", content="Which planet has the strongest winds?"),
+            ChatMessage(role="assistant", content="Neptune."),
+            ChatMessage(role="user", content="and the largest?"),
+        ],
+    )
+
+    _ = [e async for e in _service(conversations, 0.0, embeddings).stream_answer(request)]
+
+    assert embeddings.queries == ["Which planet is the largest?"]
+    assert conversations.messages[0] == ("user", "and the largest?")
+
+
+async def test_first_question_is_embedded_unchanged() -> None:
+    embeddings = FakeEmbeddings()
+    service = _service(FakeConversations(), 0.0, embeddings)
+
+    _ = [e async for e in service.stream_answer(_request())]
+
+    assert embeddings.queries == ["hello?"]
