@@ -1,0 +1,37 @@
+NOVATECH LTD. EMPLOYEE HANDBOOK (sample document, fictional company)
+
+1. Working hours and remote work
+
+The standard working day at NovaTech is 8 hours, Monday to Friday. Employees may
+start work between 7:00 and 10:00. Core hours are 10:00-15:00, when everyone should
+be available to their team.
+
+Remote work is available up to three days a week, as agreed with your manager.
+The company pays a flat allowance of 40 EUR per month towards internet and electricity
+costs for people who work remotely at least eight days a month.
+
+2. Vacation
+
+The annual vacation entitlement is 20 days, rising to 26 days after 10 years of
+service. In addition, every employee receives 2 "wellbeing days" per year that
+require no explanation. Vacation requests must be submitted in the HR system at least
+7 days in advance, except for short-notice leave (at most 4 days per year).
+
+3. Equipment and security
+
+Every new employee receives a laptop (macOS or Linux, your choice), a monitor and a
+headset. Laptop disks must be encrypted, and two-factor authentication (2FA) is
+mandatory for all company services. Lost equipment must be reported to the IT team
+within 24 hours at it-help@novatech.example.
+
+4. Training budget
+
+Every employee has an annual training budget of 1,000 EUR and 3 days of paid training
+leave. The budget covers courses, books and conferences. Unused budget does not roll
+over to the next year.
+
+5. Reviews and bonuses
+
+Performance reviews take place twice a year, in June and December. The annual bonus
+ranges from 0 to 15% of annual salary and depends on team results and individual
+performance. The bonus is paid in March of the following year.
