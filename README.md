@@ -56,7 +56,7 @@ Every answer shows which document, chunk, PDF page and similarity score each cit
 | PDF parsing | `pypdf` | Pure Python, page-level extraction |
 | Web search | `ddgs` (DuckDuckGo) | No API key needed |
 | Serving | nginx (static files + streaming-safe `/api` proxy), Docker Compose | Production-like local setup |
-| Quality | `ruff` (PEP 8 + lint rules), `mypy --strict`, `pytest` (64 tests incl. pgvector integration), `tsc --strict` | Typed and tested end to end |
+| Quality | `ruff` (PEP 8 + lint rules), `mypy --strict`, `pytest` (78 tests incl. pgvector integration), `tsc --strict` | Typed and tested end to end |
 
 The codebase is about 4,000 lines of Python and TypeScript.
 
@@ -183,7 +183,7 @@ frontend/src/
                          PreviewModal
 
 sample_docs/             ready-to-use test documents (English; TXT, MD, PDF)
-tests/                   pytest suite (64 tests); tests/integration needs Postgres
+tests/                   pytest suite (78 tests); tests/integration needs Postgres
 Dockerfile, docker-compose.yml, frontend/Dockerfile, frontend/nginx.conf
 ```
 
@@ -267,12 +267,13 @@ The **Web** toggle is off by default. When it is on, **only the text of your que
 
 ### 5. Retrieval quality, reliability and security notes
 
-- **Similarity threshold.** Chunks below `RAG_MIN_SCORE` (default 0.6) are not given to the model. With `nomic-embed-text` on the sample documents, relevant questions had a best match of 0.74-0.84 and unrelated ones (*"What is photosynthesis?"*, *"hello how are you"*) at most 0.57, so unrelated questions get no document context instead of noise. Tune it for your own corpus.
+- **Similarity threshold.** Chunks below the threshold are not given to the model. With `nomic-embed-text` on the sample documents, relevant questions had a best match of 0.74-0.84 and unrelated ones (*"What is photosynthesis?"*, *"hello how are you"*) at most 0.57, so the built-in value for that model is 0.6. Similarity scales differ between embedding models, so the built-in value only applies to models it was measured for; for any other model **no threshold is applied** (and a warning is logged at startup) until you set `RAG_MIN_SCORE` yourself.
+- **Follow-up questions.** A short message after earlier turns (under 12 words, e.g. *"and which one is the largest?"*) is first rewritten by the chosen model into a standalone query using the recent conversation. The rewritten query is used for vector search and web search, while the prompt and the saved history keep your original wording. If the rewrite fails, the original text is used. On the sample documents, the raw follow-up matched one chunk with similarity 0.67, and the rewritten query matched two with 0.79 and 0.70. The cost is one extra short model call for follow-ups only.
 - **Filtered search is exact.** When a conversation is limited to selected documents, those documents' chunks are selected first and ranked exactly. A plain HNSW query applies the `WHERE` only after it has produced its candidates, and an integration test showed that this can return **zero** results for a small document next to a large one.
 - **Chunking.** Handles Windows (`\r\n`) and single-newline text (typical for PDFs), cuts on word boundaries and never exceeds `chunk_size`.
-- **Atomic, idempotent ingestion.** A document and its chunks are written in one transaction, and the file's SHA-256 is unique, so uploading the same file twice returns `409` instead of duplicating chunks. Damaged or password-protected PDFs return `422`, and the size limit is enforced without loading the whole file.
+- **Atomic, idempotent ingestion.** A document and its chunks are written in one transaction, and the SHA-256 of the extracted text is unique, so uploading the same document twice returns `409` instead of duplicating chunks, even if the line endings differ. PDFs that need a password to open, and damaged PDFs, return `422`; PDFs that only restrict printing or copying (owner password) are read normally. The size limit is enforced without loading the whole file.
 - **Prompt-injection hygiene.** Document excerpts and web results are untrusted. They are placed in tagged `<documents>` / `<web_results>` blocks in the user message, never in the `system` prompt, closing tags inside them are neutralised, and the system prompt tells the model not to follow instructions found there. This reduces the risk but cannot eliminate it.
-- **Network exposure.** The app has no authentication, so Docker publishes the web UI and the database only on `127.0.0.1`. Change the port mappings in `docker-compose.yml` only if you add authentication.
+- **Network exposure.** The app has no authentication, so Docker publishes the web UI and the database only on `127.0.0.1`. Change the port mappings in `docker-compose.yml` only if you add authentication. The backend container runs as an unprivileged user and has a healthcheck; the frontend container starts only after it is healthy.
 
 ## Quick start
 
@@ -318,7 +319,7 @@ npm run dev
 ```
 
 > [!NOTE]
-> **Windows:** `uv run local-rag-system` configures the required `SelectorEventLoop` for you. If you start uvicorn manually, add `--loop local_rag_system.event_loop:selector_loop_factory`.
+> **Windows:** use `127.0.0.1` rather than `localhost` for the database (the defaults already do): `localhost` may resolve to IPv6 first, where Docker does not listen, which makes connections hang. `uv run local-rag-system` configures the required `SelectorEventLoop` for you. If you start uvicorn manually, add `--loop local_rag_system.event_loop:selector_loop_factory`.
 
 ### Try it
 
@@ -339,11 +340,11 @@ Environment variables (or a `.env` file), all optional:
 
 | Variable | Default |
 |---|---|
-| `RAG_DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/rag` |
+| `RAG_DATABASE_URL` | `postgresql://postgres:postgres@127.0.0.1:5432/rag` |
 | `RAG_OLLAMA_HOST` | `http://localhost:11434` |
 | `RAG_EMBEDDING_MODEL` | `nomic-embed-text` |
 | `RAG_EMBEDDING_DIM` | `768` |
-| `RAG_MIN_SCORE` | `0.6` (minimum cosine similarity for a chunk to be used) |
+| `RAG_MIN_SCORE` | unset: `0.6` for `nomic-embed-text`, no threshold for other models. Minimum cosine similarity for a chunk to be used |
 | `RAG_DEFAULT_CHUNK_SIZE` | `800` |
 | `RAG_DEFAULT_CHUNK_OVERLAP` | `100` |
 | `RAG_MAX_UPLOAD_BYTES` | `20971520` (20 MB) |
@@ -390,14 +391,14 @@ Not tested: Linux and macOS, other GPUs, CPU-only inference, large corpora (thou
 - Strict layering (routers -> services -> repositories) that makes the logic testable without a database or an LLM.
 - A usable chat product around it: model switching, parameter tuning, saved history, document preview, source inspection and optional web search.
 - Verified citations: the answer to *"How many vacation days does a NovaTech employee get?"* cites the exact handbook chunk, which you can open from the answer.
-- Full typing (`mypy --strict`, TypeScript `strict` with no `any`), PEP 8 enforced by `ruff`, and 64 automated tests, including integration tests against a real pgvector database.
+- Full typing (`mypy --strict`, TypeScript `strict` with no `any`), PEP 8 enforced by `ruff`, and 78 automated tests, including integration tests against a real pgvector database.
 - A reproducible one-command deployment with Docker Compose, with nginx configured so the token stream is not buffered.
 
 ### Known limitations
 
 - Single-user: there is no authentication.
 - Scanned PDFs are not supported (there is no OCR); they are rejected with a clear error.
-- Retrieval uses the last user message only, so follow-up questions like *"and the second one?"* retrieve poorly without more context.
+- Follow-up rewriting depends on the chat model and only applies to short messages; a long follow-up that still relies on earlier turns is searched as written.
 - Web results are snippets, not full pages (see above).
 - Large models that do not fit in VRAM are slow to load.
 
@@ -456,7 +457,7 @@ The response is `application/x-ndjson`, one JSON event per line:
 - The first event announces the conversation (new when `conversation_id` is `null`).
 - Sources have `kind: "document"` or `kind: "web"`. Web sources carry a `url` and no chunk/score. Numbers are continuous, so documents come first and web results follow.
 - The client sends the message history. The server stores the last user message and the assistant's answer.
-- Retrieval uses the last user message.
+- Retrieval uses the last user message, rewritten into a standalone query first if it is a short follow-up.
 - `ping` can be ignored by clients; `error` ends the stream.
 
 ## Development
@@ -464,7 +465,7 @@ The response is `application/x-ndjson`, one JSON event per line:
 ```bash
 uv run ruff check . && uv run ruff format --check .   # PEP 8 / lint
 uv run mypy src                                       # strict typing
-uv run pytest                                         # 64 tests; the pgvector ones are skipped without Postgres
+uv run pytest                                         # 78 tests; the pgvector ones are skipped without Postgres
 cd frontend && npm run typecheck && npm run build     # TypeScript strict
 ```
 
