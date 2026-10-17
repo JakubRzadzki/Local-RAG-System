@@ -69,3 +69,10 @@ class ChunkPreview:
     chunk_index: int
     page: int | None
     content: str
+
+
+@dataclass(frozen=True, slots=True)
+class WebResult:
+    title: str
+    url: str
+    snippet: str

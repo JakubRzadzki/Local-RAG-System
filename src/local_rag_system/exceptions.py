@@ -29,6 +29,10 @@ class ConversationNotFoundError(RagError):
     """The requested conversation does not exist."""
 
 
+class WebSearchError(RagError):
+    """The web search provider failed or is unreachable."""
+
+
 class ModelNotFoundError(RagError):
     """The requested Ollama model is not available locally."""
 
