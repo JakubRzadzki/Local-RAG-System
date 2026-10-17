@@ -14,6 +14,9 @@ official `ollama` client and PostgreSQL + `pgvector`.
 - Tunable per request: `temperature`, `top_k`; tunable per upload: `chunk_size`, `chunk_overlap`
 - Source inspector under every answer: filename, chunk index, page (PDF), cosine-similarity score and the chunk text
 - Restrict a conversation to selected documents
+- **Saved chat history**: conversations are stored in PostgreSQL; reopen, rename or delete them from the *Chats* tab (partial answers are kept when you press stop)
+- **Document preview**: inspect every stored chunk of a file, and jump from a cited source straight to its highlighted chunk
+- The assistant knows how the app works (built-in guide in `services/app_guide.py`), so you can simply ask *"How does this application work?"*
 - Paragraph-aware chunking with overlap; per-page chunking for PDFs
 - Typed end to end: Pydantic on the backend, strict TypeScript (no `any`) on the frontend
 
@@ -124,7 +127,12 @@ Interactive docs: `http://127.0.0.1:8000/docs`.
 | `GET /api/models` | Installed Ollama models with `capabilities` and `supports_chat`; also reports whether the embedding model is installed. |
 | `GET /api/documents` | List indexed documents. |
 | `POST /api/documents` | Multipart upload: `file` (TXT/MD/PDF), optional `chunk_size` (100–4000), `chunk_overlap` (0–1000). Returns `201` with the document. Errors: `413` too large, `415` unsupported type, `422` no text / invalid chunking, `503` Ollama down. |
+| `GET /api/documents/{id}/preview` | Document metadata plus all its chunks (`chunk_index`, `page`, `content`) in reading order. |
 | `DELETE /api/documents/{id}` | Delete a document and its chunks (`204`, or `404`). |
+| `GET /api/conversations` | Saved conversations, most recently active first. |
+| `GET /api/conversations/{id}` | A conversation with its messages and their sources. |
+| `PATCH /api/conversations/{id}` | Rename: `{"title": "..."}`. |
+| `DELETE /api/conversations/{id}` | Delete a conversation (`204`, or `404`). |
 | `POST /api/chat` | Streaming RAG answer (see below). |
 
 ### `POST /api/chat`
@@ -133,13 +141,15 @@ Interactive docs: `http://127.0.0.1:8000/docs`.
 {
   "model": "gemma3:4b",
   "messages": [{ "role": "user", "content": "What is top_k?" }],
-  "options": { "temperature": 0.2, "top_k": 4, "document_ids": null }
+  "options": { "temperature": 0.2, "top_k": 4, "document_ids": null },
+  "conversation_id": null
 }
 ```
 
 The response is `application/x-ndjson`, one JSON event per line:
 
 ```jsonl
+{"type":"conversation","id":1,"title":"What is top_k?"}
 {"type":"sources","sources":[{"index":1,"document_id":3,"filename":"rag-explained.md","chunk_index":2,"page":null,"score":0.83,"content":"…"}]}
 {"type":"token","content":"top"}
 {"type":"token","content":"_k"}
@@ -147,7 +157,7 @@ The response is `application/x-ndjson`, one JSON event per line:
 ```
 
 Failures after streaming has started are reported in-band as `{"type":"error","message":"…"}`.
-Conversation history is sent by the client (the server is stateless); retrieval uses the last user message.
+The first event announces the conversation (new when `conversation_id` is `null`). The client sends the message history; the server stores the last user message and the assistant's answer. Retrieval uses the last user message.
 
 ## Development
 
