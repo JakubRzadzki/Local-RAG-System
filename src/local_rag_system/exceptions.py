@@ -13,6 +13,14 @@ class FileTooLargeError(RagError):
     """The uploaded file exceeds the configured size limit."""
 
 
+class CorruptDocumentError(RagError):
+    """The file is damaged, password-protected or otherwise unreadable."""
+
+
+class DuplicateDocumentError(RagError):
+    """An identical file has already been uploaded."""
+
+
 class EmptyDocumentError(RagError):
     """No text could be extracted from the uploaded file."""
 

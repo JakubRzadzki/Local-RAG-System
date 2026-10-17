@@ -14,7 +14,9 @@ from local_rag_system.config import get_settings
 from local_rag_system.database import create_pool, ensure_extension, init_schema
 from local_rag_system.exceptions import (
     ConversationNotFoundError,
+    CorruptDocumentError,
     DocumentNotFoundError,
+    DuplicateDocumentError,
     EmptyDocumentError,
     FileTooLargeError,
     InvalidChunkingError,
@@ -35,6 +37,8 @@ _STATUS_BY_ERROR: dict[type[Exception], int] = {
     UnsupportedFileTypeError: status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
     FileTooLargeError: status.HTTP_413_CONTENT_TOO_LARGE,
     EmptyDocumentError: status.HTTP_422_UNPROCESSABLE_CONTENT,
+    CorruptDocumentError: status.HTTP_422_UNPROCESSABLE_CONTENT,
+    DuplicateDocumentError: status.HTTP_409_CONFLICT,
     InvalidChunkingError: status.HTTP_422_UNPROCESSABLE_CONTENT,
     OllamaUnavailableError: status.HTTP_503_SERVICE_UNAVAILABLE,
     WebSearchError: status.HTTP_502_BAD_GATEWAY,
