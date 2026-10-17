@@ -6,9 +6,18 @@ interface Props {
   isStreaming: boolean;
   onSend: (text: string) => void;
   onStop: () => void;
+  webSearch: boolean;
+  onWebSearch: (enabled: boolean) => void;
 }
 
-export function Composer({ disabled, isStreaming, onSend, onStop }: Props) {
+export function Composer({
+  disabled,
+  isStreaming,
+  onSend,
+  onStop,
+  webSearch,
+  onWebSearch,
+}: Props) {
   const [text, setText] = useState("");
 
   const submit = (event?: FormEvent): void => {
@@ -29,6 +38,15 @@ export function Composer({ disabled, isStreaming, onSend, onStop }: Props) {
 
   return (
     <form className="composer" onSubmit={submit}>
+      <button
+        type="button"
+        className={`web-toggle${webSearch ? " on" : ""}`}
+        aria-pressed={webSearch}
+        title="Also search the web (the question is sent to DuckDuckGo)"
+        onClick={() => onWebSearch(!webSearch)}
+      >
+        🌐 Web
+      </button>
       <textarea
         value={text}
         rows={1}

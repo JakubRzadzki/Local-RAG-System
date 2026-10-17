@@ -29,11 +29,14 @@ export interface RagDocument {
 
 export interface Source {
   index: number;
-  document_id: number;
+  kind: "document" | "web";
+  document_id: number | null;
+  /** Document filename, or the page title for web results. */
   filename: string;
-  chunk_index: number;
+  chunk_index: number | null;
   page: number | null;
-  score: number;
+  url: string | null;
+  score: number | null;
   content: string;
 }
 
@@ -41,6 +44,7 @@ export interface ChatOptions {
   temperature: number;
   top_k: number;
   document_ids: number[] | null;
+  web_search: boolean;
 }
 
 export interface ChatRequestMessage {

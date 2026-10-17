@@ -20,6 +20,7 @@ export default function App() {
 
   const [temperature, setTemperature] = useLocalStorage("rag.temperature", 0.2);
   const [topK, setTopK] = useLocalStorage("rag.topK", 4);
+  const [webSearch, setWebSearch] = useLocalStorage("rag.web", false);
   const [uploadSettings, setUploadSettings] = useLocalStorage<UploadSettings>("rag.upload", {
     chunkSize: 800,
     chunkOverlap: 100,
@@ -45,6 +46,7 @@ export default function App() {
       temperature,
       top_k: topK,
       document_ids: activeScope.length > 0 ? activeScope : null,
+      web_search: webSearch,
     });
   };
 
@@ -160,6 +162,8 @@ export default function App() {
           isStreaming={chat.isStreaming}
           onSend={send}
           onStop={chat.stop}
+          webSearch={webSearch}
+          onWebSearch={setWebSearch}
         />
       </main>
       {preview && (
