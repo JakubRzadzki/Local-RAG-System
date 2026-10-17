@@ -129,9 +129,13 @@ export async function streamChat(
     }
     buffer += decoder.decode();
     flushLines(true);
-  } catch (error) {
+  } catch {
     if (!signal.aborted) {
-      throw error;
+      throw new ApiError(
+        "The connection to the backend was interrupted. The answer above may be incomplete; " +
+          "check that the backend is running and try again.",
+        0,
+      );
     }
   }
 }

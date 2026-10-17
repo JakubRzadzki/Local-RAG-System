@@ -59,6 +59,7 @@ export type ChatEvent =
   | { type: "conversation"; id: number; title: string }
   | { type: "sources"; sources: Source[] }
   | { type: "token"; content: string }
+  | { type: "ping" }
   | { type: "done" }
   | { type: "error"; message: string };
 

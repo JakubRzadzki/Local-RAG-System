@@ -63,6 +63,8 @@ export function useChat(onSaved: () => void): UseChat {
           case "sources":
             patch(assistantId, (m) => ({ ...m, sources: event.sources }));
             break;
+          case "ping":
+            break;
           case "token":
             patch(assistantId, (m) => ({ ...m, content: m.content + event.content }));
             break;
