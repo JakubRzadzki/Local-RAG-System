@@ -1,26 +1,35 @@
 import { useCallback, useRef, useState } from "react";
-import { streamChat } from "../api/client";
+import { getConversation, streamChat } from "../api/client";
 import type { ChatEvent, ChatOptions, UiMessage } from "../types";
 
 interface UseChat {
   messages: UiMessage[];
+  conversationId: number | null;
   isStreaming: boolean;
   send: (text: string, model: string, options: ChatOptions) => Promise<void>;
   stop: () => void;
   clear: () => void;
+  load: (conversationId: number) => Promise<void>;
 }
 
 let counter = 0;
 const nextId = (): string => `m${Date.now()}-${counter++}`;
 
-export function useChat(): UseChat {
+/**
+ * Chat state and streaming. `onSaved` fires after each exchange so the caller can
+ * refresh the conversation list (a new chat appears, ordering changes).
+ */
+export function useChat(onSaved: () => void): UseChat {
   const [messages, setMessages] = useState<UiMessage[]>([]);
+  const [conversationId, setConversationId] = useState<number | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const patch = useCallback((id: string, update: (m: UiMessage) => UiMessage) => {
     setMessages((all) => all.map((m) => (m.id === id ? update(m) : m)));
   }, []);
+
+  const stop = useCallback(() => abortRef.current?.abort(), []);
 
   const send = useCallback(
     async (text: string, model: string, options: ChatOptions) => {
@@ -48,6 +57,9 @@ export function useChat(): UseChat {
 
       const onEvent = (event: ChatEvent): void => {
         switch (event.type) {
+          case "conversation":
+            setConversationId(event.id);
+            break;
           case "sources":
             patch(assistantId, (m) => ({ ...m, sources: event.sources }));
             break;
@@ -64,7 +76,11 @@ export function useChat(): UseChat {
       };
 
       try {
-        await streamChat({ model, messages: history, options }, onEvent, controller.signal);
+        await streamChat(
+          { model, messages: history, options, conversation_id: conversationId },
+          onEvent,
+          controller.signal,
+        );
         patch(assistantId, (m) => (m.status === "streaming" ? { ...m, status: "done" } : m));
       } catch (e) {
         const message = e instanceof Error ? e.message : "Unexpected error";
@@ -72,17 +88,32 @@ export function useChat(): UseChat {
       } finally {
         setIsStreaming(false);
         abortRef.current = null;
+        onSaved();
       }
     },
-    [messages, patch],
+    [messages, conversationId, patch, onSaved],
   );
-
-  const stop = useCallback(() => abortRef.current?.abort(), []);
 
   const clear = useCallback(() => {
     abortRef.current?.abort();
     setMessages([]);
+    setConversationId(null);
   }, []);
 
-  return { messages, isStreaming, send, stop, clear };
+  const load = useCallback(async (id: number) => {
+    abortRef.current?.abort();
+    const detail = await getConversation(id);
+    setMessages(
+      detail.messages.map((m) => ({
+        id: `s${m.id}`,
+        role: m.role,
+        content: m.content,
+        sources: m.sources,
+        status: "done",
+      })),
+    );
+    setConversationId(detail.id);
+  }, []);
+
+  return { messages, conversationId, isStreaming, send, stop, clear, load };
 }
