@@ -26,3 +26,21 @@ async def test_fast_stream_has_no_pings() -> None:
     events = [e async for e in with_heartbeat(fast(), 5)]
     assert not any(isinstance(e, PingEvent) for e in events)
     assert len(events) == 2
+
+
+async def test_abandoned_stream_runs_the_generators_cleanup() -> None:
+    cleaned = asyncio.Event()
+
+    async def events() -> AsyncIterator[ChatEvent]:
+        try:
+            yield TokenEvent(content="a")
+            await asyncio.sleep(10)
+            yield DoneEvent()
+        finally:
+            cleaned.set()  # e.g. saving the partial answer
+
+    stream = with_heartbeat(events(), 0.05)
+    assert (await anext(stream)).type == "token"
+    await stream.aclose()  # what Starlette does when the client disconnects
+
+    assert cleaned.is_set()
