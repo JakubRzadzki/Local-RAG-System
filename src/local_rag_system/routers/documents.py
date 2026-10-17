@@ -28,7 +28,8 @@ async def upload_document(
     document = await service.ingest(
         filename=file.filename or "untitled",
         content_type=file.content_type or "application/octet-stream",
-        data=await file.read(),
+        # Read one byte past the limit: enough to detect "too large" without loading the file.
+        data=await file.read(settings.max_upload_bytes + 1),
         chunk_size=chunk_size or settings.default_chunk_size,
         chunk_overlap=(settings.default_chunk_overlap if chunk_overlap is None else chunk_overlap),
     )

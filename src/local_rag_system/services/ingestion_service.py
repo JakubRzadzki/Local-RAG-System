@@ -1,6 +1,12 @@
 """Document ingestion: extract, chunk, embed and store."""
 
-from local_rag_system.exceptions import DocumentNotFoundError, FileTooLargeError
+import hashlib
+
+from local_rag_system.exceptions import (
+    DocumentNotFoundError,
+    DuplicateDocumentError,
+    FileTooLargeError,
+)
 from local_rag_system.repositories.chunk_repository import ChunkRepository
 from local_rag_system.repositories.document_repository import DocumentRepository
 from local_rag_system.repositories.records import ChunkPreview, DocumentRecord, NewChunk
@@ -37,6 +43,14 @@ class IngestionService:
                 f"File exceeds the {self._max_upload_bytes // (1024 * 1024)} MB limit."
             )
 
+        content_hash = hashlib.sha256(data).hexdigest()
+        existing = await self._documents.find_by_hash(content_hash)
+        if existing is not None:
+            raise DuplicateDocumentError(
+                f"This file was already uploaded as '{existing.filename}'. "
+                "Delete that document first to index it again with different settings."
+            )
+
         sections = await extract_sections(filename, data)
         pieces: list[tuple[str, int | None]] = [
             (chunk, section.page)
@@ -50,17 +64,15 @@ class IngestionService:
             NewChunk(chunk_index=i, content=text, page=page, embedding=vector)
             for i, ((text, page), vector) in enumerate(zip(pieces, vectors, strict=True))
         ]
-
-        document = await self._documents.create(
-            filename, content_type, len(data), chunk_size, chunk_overlap
+        return await self._documents.create_with_chunks(
+            filename,
+            content_type,
+            len(data),
+            chunk_size,
+            chunk_overlap,
+            content_hash,
+            new_chunks,
         )
-        try:
-            await self._chunks.add_many(document.id, new_chunks)
-            await self._documents.set_chunk_count(document.id, len(new_chunks))
-        except Exception:
-            await self._documents.delete(document.id)
-            raise
-        return await self._require(document.id)
 
     async def list_documents(self) -> list[DocumentRecord]:
         return await self._documents.list_all()
