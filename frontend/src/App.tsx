@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import { ChatWindow } from "./components/ChatWindow";
 import { Composer } from "./components/Composer";
+import { PreviewModal } from "./components/PreviewModal";
 import { ModelSelect } from "./components/ModelSelect";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
 import { useChat } from "./hooks/useChat";
+import { useConversations } from "./hooks/useConversations";
 import { useDocuments } from "./hooks/useDocuments";
 import { useLocalStorage } from "./hooks/useLocalStorage";
 import { useModels } from "./hooks/useModels";
@@ -13,7 +15,8 @@ import type { UploadSettings } from "./types";
 export default function App() {
   const models = useModels();
   const docs = useDocuments();
-  const chat = useChat();
+  const conversations = useConversations();
+  const chat = useChat(conversations.refresh);
 
   const [temperature, setTemperature] = useLocalStorage("rag.temperature", 0.2);
   const [topK, setTopK] = useLocalStorage("rag.topK", 4);
@@ -23,6 +26,10 @@ export default function App() {
   });
   const [showSettings, setShowSettings] = useState(false);
   const [scope, setScope] = useState<number[]>([]);
+  const [preview, setPreview] = useState<{ documentId: number; chunk: number | null } | null>(
+    null,
+  );
+  const [chatError, setChatError] = useState<string | null>(null);
 
   // Ignore selections for documents that have since been deleted.
   const activeScope = useMemo(
@@ -41,20 +48,55 @@ export default function App() {
     });
   };
 
+  const openConversation = (id: number): void => {
+    setChatError(null);
+    chat.load(id).catch((e: unknown) => {
+      setChatError(e instanceof Error ? e.message : "Could not open the chat");
+    });
+  };
+
+  const deleteConversation = (id: number): void => {
+    conversations
+      .remove(id)
+      .then(() => {
+        if (id === chat.conversationId) {
+          chat.clear();
+        }
+      })
+      .catch((e: unknown) => {
+        setChatError(e instanceof Error ? e.message : "Could not delete the chat");
+      });
+  };
+
+  const renameConversation = (id: number, title: string): void => {
+    conversations.rename(id, title).catch((e: unknown) => {
+      setChatError(e instanceof Error ? e.message : "Could not rename the chat");
+    });
+  };
+
   return (
     <div className="app">
       <Sidebar
+        conversations={conversations.conversations}
+        activeConversationId={chat.conversationId}
+        onOpenConversation={openConversation}
+        onRenameConversation={renameConversation}
+        onDeleteConversation={deleteConversation}
+        onPreview={(id) => setPreview({ documentId: id, chunk: null })}
         documents={docs.documents}
         uploading={docs.uploading}
         scope={activeScope}
         uploadSettings={uploadSettings}
         error={docs.error}
-        onNewChat={chat.clear}
+        onNewChat={() => {
+          setChatError(null);
+          chat.clear();
+        }}
         onToggleScope={toggleScope}
         onClearScope={() => setScope([])}
         onUpload={(files) => void docs.upload(files, uploadSettings)}
         onUploadSettings={setUploadSettings}
-        onDelete={(id) => void docs.remove(id)}
+        onDeleteDocument={(id) => void docs.remove(id)}
         onDismissError={docs.dismissError}
       />
 
@@ -100,7 +142,14 @@ export default function App() {
           </div>
         )}
 
+        {chatError && (
+          <div className="banner error" role="alert">
+            {chatError}
+          </div>
+        )}
+
         <ChatWindow
+          onOpenSource={(documentId, chunk) => setPreview({ documentId, chunk })}
           messages={chat.messages}
           hasDocuments={docs.documents.length > 0}
           onSuggestion={send}
@@ -113,6 +162,13 @@ export default function App() {
           onStop={chat.stop}
         />
       </main>
+      {preview && (
+        <PreviewModal
+          documentId={preview.documentId}
+          highlightChunk={preview.chunk}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </div>
   );
 }
