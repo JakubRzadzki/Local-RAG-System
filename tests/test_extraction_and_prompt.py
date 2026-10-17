@@ -1,6 +1,8 @@
+import io
 from pathlib import Path
 
 import pytest
+from pypdf import PdfReader, PdfWriter
 
 from local_rag_system.exceptions import (
     CorruptDocumentError,
@@ -108,3 +110,25 @@ def test_disabled_web_search_points_user_to_the_toggle() -> None:
 def test_failed_web_search_is_reported_to_the_model() -> None:
     messages = build_messages(_user("q"), [], [], web_failed=True)
     assert "failed" in messages[0]["content"]
+
+
+def _encrypted_sample(user_password: str) -> bytes:
+    source = PdfReader(SAMPLE_DOCS / "python-tooling-cheatsheet.pdf")
+    writer = PdfWriter()
+    for page in source.pages:
+        writer.add_page(page)
+    # RC4 needs no optional dependency; the behaviour under test is the same for AES.
+    writer.encrypt(user_password=user_password, owner_password="owner", algorithm="RC4-128")
+    buffer = io.BytesIO()
+    writer.write(buffer)
+    return buffer.getvalue()
+
+
+async def test_pdf_with_only_an_owner_password_is_still_read() -> None:
+    sections = await extract_sections("restricted.pdf", _encrypted_sample(user_password=""))
+    assert [s.page for s in sections] == [1, 2, 3]
+
+
+async def test_pdf_with_a_user_password_is_rejected_as_password_protected() -> None:
+    with pytest.raises(CorruptDocumentError, match="password"):
+        await extract_sections("locked.pdf", _encrypted_sample(user_password="secret"))

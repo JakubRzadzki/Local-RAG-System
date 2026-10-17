@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import PurePath
 
 from pypdf import PdfReader
+from pypdf.errors import FileNotDecryptedError
 
 from local_rag_system.exceptions import (
     CorruptDocumentError,
@@ -32,17 +33,17 @@ def _decode_text(data: bytes) -> str:
 
 
 def _read_pdf(data: bytes) -> list[Section]:
+    # A PDF with only an *owner* password reports is_encrypted but opens with the empty
+    # user password, so only a real FileNotDecryptedError means the file is locked.
     try:
         reader = PdfReader(io.BytesIO(data))
-        if reader.is_encrypted:
-            raise CorruptDocumentError("The PDF is password-protected.")
         sections = (
             Section(text=(page.extract_text() or "").strip(), page=number)
             for number, page in enumerate(reader.pages, start=1)
         )
         return [section for section in sections if section.text]
-    except CorruptDocumentError:
-        raise
+    except FileNotDecryptedError as exc:
+        raise CorruptDocumentError("The PDF is password-protected.") from exc
     except Exception as exc:  # pypdf raises many unrelated types for damaged files
         raise CorruptDocumentError("The PDF is damaged or could not be read.") from exc
 
