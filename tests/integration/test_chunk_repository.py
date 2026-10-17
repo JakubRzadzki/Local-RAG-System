@@ -70,14 +70,19 @@ async def test_document_filter_returns_only_selected_documents(pool: AsyncConnec
     assert [r.document_id for r in results] == [second]
 
 
-async def test_filter_still_returns_top_k_when_hnsw_candidates_are_all_filtered_out(
-    pool: AsyncConnectionPool,
+@pytest.mark.parametrize("with_document_index", [True, False], ids=["production", "hnsw-only"])
+async def test_filtered_search_returns_top_k_even_when_hnsw_candidates_are_all_filtered_out(
+    pool: AsyncConnectionPool, with_document_index: bool
 ) -> None:
-    # Without the document_id btree index the planner must use HNSW and filter afterwards.
-    # HNSW only yields ~ef_search (40) candidates, all of which belong to "big", so a naive
-    # query returns nothing for "small". Iterative scans make the index keep searching.
-    async with pool.connection() as conn:
-        await conn.execute("DROP INDEX IF EXISTS chunks_document_idx")
+    # HNSW only yields ~ef_search (40) candidates and applies WHERE afterwards. Here all of
+    # them belong to "big", so a naive filtered query returns nothing for "small". The
+    # repository selects the chosen documents first and ranks them exactly instead.
+    #
+    # "production" keeps chunks_document_idx (the planner may use it instead of HNSW);
+    # "hnsw-only" drops it to force the index scan that exposed the problem.
+    if not with_document_index:
+        async with pool.connection() as conn:
+            await conn.execute("DROP INDEX IF EXISTS chunks_document_idx")
     repo = ChunkRepository(pool)
     big = await make_document(pool, "big.txt")
     small = await make_document(pool, "small.txt")
