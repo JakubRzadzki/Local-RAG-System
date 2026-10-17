@@ -3,7 +3,7 @@
 from local_rag_system.exceptions import DocumentNotFoundError, FileTooLargeError
 from local_rag_system.repositories.chunk_repository import ChunkRepository
 from local_rag_system.repositories.document_repository import DocumentRepository
-from local_rag_system.repositories.records import DocumentRecord, NewChunk
+from local_rag_system.repositories.records import ChunkPreview, DocumentRecord, NewChunk
 from local_rag_system.services.chunking_service import chunk_text
 from local_rag_system.services.embedding_service import EmbeddingService
 from local_rag_system.services.text_extraction_service import extract_sections
@@ -64,6 +64,11 @@ class IngestionService:
 
     async def list_documents(self) -> list[DocumentRecord]:
         return await self._documents.list_all()
+
+    async def get_preview(self, document_id: int) -> tuple[DocumentRecord, list[ChunkPreview]]:
+        """Return a document together with all of its stored chunks."""
+        document = await self._require(document_id)
+        return document, await self._chunks.list_by_document(document_id)
 
     async def delete_document(self, document_id: int) -> None:
         if not await self._documents.delete(document_id):
