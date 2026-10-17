@@ -32,19 +32,22 @@ class ChunkRepository:
         top_k: int,
         document_ids: Sequence[int] | None = None,
     ) -> list[RetrievedChunk]:
-        """Return the ``top_k`` chunks closest to ``embedding`` by cosine similarity."""
+        """Return the ``top_k`` chunks closest to ``embedding`` by cosine similarity.
+
+        Without a document filter the HNSW index answers the query. With a filter the
+        matching chunks are selected *first* (``MATERIALIZED``) and then ranked exactly:
+        an HNSW scan applies ``WHERE`` only after it has produced its ~``ef_search``
+        candidates, so a filter on a small document could otherwise return nothing.
+        """
         query_vec = np.array(embedding)
-        sql = """
-            SELECT c.id, c.document_id, d.filename, c.chunk_index, c.page, c.content,
-                   1 - (c.embedding <=> %s) AS score
-            FROM chunks c
-            JOIN documents d ON d.id = c.document_id
-            WHERE (%s::int[] IS NULL OR c.document_id = ANY(%s::int[]))
-            ORDER BY c.embedding <=> %s
-            LIMIT %s"""
-        ids = list(document_ids) if document_ids else None
+        if document_ids:
+            sql = self._FILTERED_SQL
+            params: tuple[object, ...] = (list(document_ids), query_vec, query_vec, top_k)
+        else:
+            sql = self._UNFILTERED_SQL
+            params = (query_vec, query_vec, top_k)
         async with self._pool.connection() as conn:
-            cur = await conn.execute(sql, (query_vec, ids, ids, query_vec, top_k))
+            cur = await conn.execute(sql, params)
             rows = await cur.fetchall()
         return [
             RetrievedChunk(
@@ -58,6 +61,27 @@ class ChunkRepository:
             )
             for r in rows
         ]
+
+    _UNFILTERED_SQL = """
+        SELECT c.id, c.document_id, d.filename, c.chunk_index, c.page, c.content,
+               1 - (c.embedding <=> %s) AS score
+        FROM chunks c
+        JOIN documents d ON d.id = c.document_id
+        ORDER BY c.embedding <=> %s
+        LIMIT %s"""
+
+    _FILTERED_SQL = """
+        WITH candidates AS MATERIALIZED (
+            SELECT id, document_id, chunk_index, page, content, embedding
+            FROM chunks
+            WHERE document_id = ANY(%s::int[])
+        )
+        SELECT c.id, c.document_id, d.filename, c.chunk_index, c.page, c.content,
+               1 - (c.embedding <=> %s) AS score
+        FROM candidates c
+        JOIN documents d ON d.id = c.document_id
+        ORDER BY c.embedding <=> %s
+        LIMIT %s"""
 
     async def list_by_document(self, document_id: int) -> list[ChunkPreview]:
         """Return all chunks of a document in reading order."""
