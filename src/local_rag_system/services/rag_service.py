@@ -25,6 +25,7 @@ from local_rag_system.schemas.chat import (
 from local_rag_system.services.conversation_service import make_title
 from local_rag_system.services.embedding_service import EmbeddingService
 from local_rag_system.services.prompt_builder import build_messages
+from local_rag_system.services.query_rewriter import QueryRewriter
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,7 @@ class RagService:
         min_score: float = 0.0,
     ) -> None:
         self._min_score = min_score
+        self._rewriter = QueryRewriter(ollama)
         self._web_search = web_search
         self._chunks = chunks
         self._conversations = conversations
@@ -98,13 +100,18 @@ class RagService:
         conversation_id: int | None = None
         try:
             capabilities = await self._ollama.capabilities(request.model)
+            # Thinking models stall before the first token; disable it where supported.
+            think = False if "thinking" in capabilities else None
 
             query = request.messages[-1].content
             conversation_id, title = await self._open_conversation(request, query)
             yield ConversationEvent(id=conversation_id, title=title)
             await self._conversations.add_message(conversation_id, "user", query)
 
-            query_vector = await self._embeddings.embed_query(query)
+            # Short follow-ups ("and the second one?") are rewritten into standalone
+            # queries for retrieval and web search; the prompt still shows the original.
+            search_query = await self._rewriter.rewrite(request.model, request.messages, think)
+            query_vector = await self._embeddings.embed_query(search_query)
             found = await self._chunks.search(
                 query_vector, request.options.top_k, request.options.document_ids
             )
@@ -121,7 +128,7 @@ class RagService:
                 )
                 for number, chunk in enumerate(retrieved, start=1)
             ]
-            web_results, web_failed = await self._search_web(request, query)
+            web_results, web_failed = await self._search_web(request, search_query)
             sources.extend(
                 SourceOut(
                     index=len(retrieved) + number,
@@ -134,8 +141,6 @@ class RagService:
             )
             yield SourcesEvent(sources=sources)
 
-            # Thinking models stall before the first token; disable it where supported.
-            think = False if "thinking" in capabilities else None
             messages = build_messages(request.messages, retrieved, web_results, web_failed)
             async for token in self._ollama.stream_chat(
                 request.model, messages, request.options.temperature, think
