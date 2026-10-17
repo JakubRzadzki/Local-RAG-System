@@ -24,6 +24,9 @@ class ChatRequest(BaseModel):
     model: str = Field(min_length=1)
     messages: list[ChatMessage] = Field(min_length=1)
     options: ChatOptions = Field(default_factory=ChatOptions)
+    conversation_id: int | None = Field(
+        default=None, description="Continue this conversation; omit to start a new one."
+    )
 
     @field_validator("messages")
     @classmethod
@@ -45,6 +48,12 @@ class SourceOut(BaseModel):
     content: str
 
 
+class ConversationEvent(BaseModel):
+    type: Literal["conversation"] = "conversation"
+    id: int
+    title: str
+
+
 class SourcesEvent(BaseModel):
     type: Literal["sources"] = "sources"
     sources: list[SourceOut]
@@ -64,7 +73,7 @@ class ErrorEvent(BaseModel):
     message: str
 
 
-ChatEvent = SourcesEvent | TokenEvent | DoneEvent | ErrorEvent
+ChatEvent = ConversationEvent | SourcesEvent | TokenEvent | DoneEvent | ErrorEvent
 
 
 def encode_event(event: ChatEvent) -> str:
