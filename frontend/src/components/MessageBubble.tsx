@@ -4,9 +4,10 @@ import { SourceList } from "./SourceList";
 
 interface Props {
   message: UiMessage;
+  onOpenSource: (documentId: number, chunkIndex: number) => void;
 }
 
-export function MessageBubble({ message }: Props) {
+export function MessageBubble({ message, onOpenSource }: Props) {
   const isUser = message.role === "user";
   return (
     <div className={`message ${message.role}`}>
@@ -27,7 +28,7 @@ export function MessageBubble({ message }: Props) {
                 {message.error ?? "Something went wrong."}
               </div>
             )}
-            <SourceList sources={message.sources} />
+            <SourceList sources={message.sources} onOpen={onOpenSource} />
           </>
         )}
       </div>

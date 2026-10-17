@@ -6,9 +6,10 @@ interface Props {
   scope: number[];
   onToggle: (id: number) => void;
   onDelete: (id: number) => void;
+  onPreview: (id: number) => void;
 }
 
-export function DocumentList({ documents, scope, onToggle, onDelete }: Props) {
+export function DocumentList({ documents, scope, onToggle, onDelete, onPreview }: Props) {
   if (documents.length === 0) {
     return <p className="muted empty-docs">No documents yet. Upload a file to start.</p>;
   }
@@ -29,6 +30,14 @@ export function DocumentList({ documents, scope, onToggle, onDelete }: Props) {
               </small>
             </span>
           </label>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={`Preview ${doc.filename}`}
+            onClick={() => onPreview(doc.id)}
+          >
+            👁
+          </button>
           <button
             type="button"
             className="icon-button"

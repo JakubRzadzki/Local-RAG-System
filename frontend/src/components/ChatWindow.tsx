@@ -6,15 +6,17 @@ interface Props {
   messages: UiMessage[];
   hasDocuments: boolean;
   onSuggestion: (text: string) => void;
+  onOpenSource: (documentId: number, chunkIndex: number) => void;
 }
 
 const SUGGESTIONS = [
+  "How does this application work?",
   "Ile dni urlopu przysługuje pracownikowi NovaTech?",
   "Which planet has the strongest winds?",
   "What is the difference between RAG and fine-tuning?",
 ];
 
-export function ChatWindow({ messages, hasDocuments, onSuggestion }: Props) {
+export function ChatWindow({ messages, hasDocuments, onSuggestion, onOpenSource }: Props) {
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -47,7 +49,7 @@ export function ChatWindow({ messages, hasDocuments, onSuggestion }: Props) {
     <div className="messages">
       <div className="messages-inner">
         {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
+          <MessageBubble key={message.id} message={message} onOpenSource={onOpenSource} />
         ))}
         <div ref={endRef} />
       </div>

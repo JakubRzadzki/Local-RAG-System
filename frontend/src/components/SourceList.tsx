@@ -2,9 +2,10 @@ import type { Source } from "../types";
 
 interface Props {
   sources: Source[];
+  onOpen: (documentId: number, chunkIndex: number) => void;
 }
 
-export function SourceList({ sources }: Props) {
+export function SourceList({ sources, onOpen }: Props) {
   if (sources.length === 0) {
     return null;
   }
@@ -26,6 +27,13 @@ export function SourceList({ sources }: Props) {
               </span>
             </header>
             <p>{source.content}</p>
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => onOpen(source.document_id, source.chunk_index)}
+            >
+              View in document
+            </button>
           </li>
         ))}
       </ol>
