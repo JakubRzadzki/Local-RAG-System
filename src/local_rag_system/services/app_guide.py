@@ -22,6 +22,10 @@ score and text; "View in document" opens it in the preview.
 - Model and parameters: the dropdown in the top bar lists the chat models installed in \
 Ollama. "Parameters" sets temperature (0 = factual, 2 = creative) and top-k (how many \
 chunks are retrieved).
+- Web search: the "Web" toggle next to the message box lets the assistant also search \
+the internet (DuckDuckGo) for current information such as news or weather. Web results \
+appear as numbered sources with links and are cited like document excerpts. It is off \
+by default; when on, the question text is sent to DuckDuckGo. Documents are never sent.
 - Chats: every conversation is saved automatically. The sidebar tab "Chats" lists \
 previous conversations; click one to continue it, use the pencil to rename it or the \
 cross to delete it. "New chat" starts a fresh conversation. The stop button interrupts \
