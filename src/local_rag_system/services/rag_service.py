@@ -1,6 +1,7 @@
 """Orchestration of the retrieval-augmented generation pipeline."""
 
 import asyncio
+import contextlib
 import logging
 from collections.abc import AsyncIterator
 
@@ -53,8 +54,13 @@ async def with_heartbeat(
             yield event
             pending = asyncio.ensure_future(anext(events))
     finally:
+        # Stop the pending step and wait for it, so the generator unwinds (and runs its own
+        # cleanup, e.g. saving a partial answer) before we close it.
         pending.cancel()
-        await events.aclose()  # type: ignore[attr-defined]
+        with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration, Exception):
+            await pending
+        with contextlib.suppress(RuntimeError):
+            await events.aclose()  # type: ignore[attr-defined]
 
 
 class RagService:
@@ -67,7 +73,9 @@ class RagService:
         ollama: OllamaRepository,
         embeddings: EmbeddingService,
         web_search: WebSearchRepository,
+        min_score: float = 0.0,
     ) -> None:
+        self._min_score = min_score
         self._web_search = web_search
         self._chunks = chunks
         self._conversations = conversations
@@ -97,9 +105,10 @@ class RagService:
             await self._conversations.add_message(conversation_id, "user", query)
 
             query_vector = await self._embeddings.embed_query(query)
-            retrieved = await self._chunks.search(
+            found = await self._chunks.search(
                 query_vector, request.options.top_k, request.options.document_ids
             )
+            retrieved = [chunk for chunk in found if chunk.score >= self._min_score]
             sources = [
                 SourceOut(
                     index=number,
