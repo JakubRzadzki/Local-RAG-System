@@ -1,0 +1,44 @@
+name: Commits
+
+# Checks the commits of a pull request (or of a push to main) and the PR title.
+# The rules live in scripts/check_commits.py and are covered by tests.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+  push:
+    branches: [main]
+
+concurrency:
+  group: commits-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  conventional-commits:
+    name: Conventional Commits, no AI attribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check the PR title
+        if: github.event_name == 'pull_request'
+        env:
+          # Passed through the environment so the title can never be interpreted as shell.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: python3 scripts/check_commits.py --title "$PR_TITLE"
+
+      - name: Check the commits in the PR
+        if: github.event_name == 'pull_request'
+        env:
+          RANGE: ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/check_commits.py --range "$RANGE"
+
+      - name: Check the commits in the push
+        if: github.event_name == 'push'
+        env:
+          RANGE: ${{ github.event.before }}..${{ github.sha }}
+        run: python3 scripts/check_commits.py --range "$RANGE"
