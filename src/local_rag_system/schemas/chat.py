@@ -18,6 +18,9 @@ class ChatOptions(BaseModel):
     document_ids: list[int] | None = Field(
         default=None, description="Restrict retrieval to these documents."
     )
+    web_search: bool = Field(
+        default=False, description="Also search the web (the query is sent to DuckDuckGo)."
+    )
 
 
 class ChatRequest(BaseModel):
@@ -40,11 +43,13 @@ class SourceOut(BaseModel):
     """A retrieved chunk that was supplied to the model as context."""
 
     index: int = Field(description="1-based citation number used in the answer, e.g. [1].")
-    document_id: int
-    filename: str
-    chunk_index: int
-    page: int | None
-    score: float
+    kind: Literal["document", "web"] = "document"
+    document_id: int | None = None
+    filename: str = Field(description="Document filename, or the page title for web results.")
+    chunk_index: int | None = None
+    page: int | None = None
+    url: str | None = None
+    score: float | None = None
     content: str
 
 
