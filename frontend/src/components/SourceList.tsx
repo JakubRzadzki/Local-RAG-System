@@ -1,0 +1,34 @@
+import type { Source } from "../types";
+
+interface Props {
+  sources: Source[];
+}
+
+export function SourceList({ sources }: Props) {
+  if (sources.length === 0) {
+    return null;
+  }
+  return (
+    <details className="sources">
+      <summary>
+        {sources.length} source{sources.length === 1 ? "" : "s"}
+      </summary>
+      <ol>
+        {sources.map((source) => (
+          <li key={source.index} className="source-card">
+            <header>
+              <span className="source-index">[{source.index}]</span>
+              <span className="source-file">{source.filename}</span>
+              <span className="source-tags">
+                <span>chunk {source.chunk_index}</span>
+                {source.page !== null && <span>page {source.page}</span>}
+                <span title="Cosine similarity">{(source.score * 100).toFixed(0)}% match</span>
+              </span>
+            </header>
+            <p>{source.content}</p>
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
