@@ -1,7 +1,7 @@
 [project]
 name = "local-rag-system"
 version = "0.1.0"
-description = "Add your description here"
+description = "Chat with your own documents using local Ollama models and pgvector."
 readme = "README.md"
 authors = [
     { name = "Jakub Rządzki", email = "jakub.rz456@gmail.com" }
@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "fastapi[dev]>=0.143.3",
+    "numpy>=2.5.4",
     "ollama>=0.6.3",
     "pgvector>=0.5.1",
     "psycopg-pool>=3.3.3",
@@ -20,7 +21,7 @@ dependencies = [
 ]
 
 [project.scripts]
-local-rag-system = "local_rag_system:main"
+local-rag-system = "local_rag_system.main:run"
 
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]
@@ -33,3 +34,27 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "ruff>=0.17.1",
 ]
+
+[tool.ruff]
+line-length = 99
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "SIM", "ANN"]
+
+[tool.mypy]
+strict = true
+plugins = ["pydantic.mypy"]
+mypy_path = "src"
+explicit_package_bases = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.pyright]
+include = ["src", "tests"]
+extraPaths = ["src"]
+venvPath = "."
+venv = ".venv"
