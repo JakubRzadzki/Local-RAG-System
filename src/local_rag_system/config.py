@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="RAG_", env_file=".env", extra="ignore")
 
-    database_url: str = "postgresql://postgres:postgres@localhost:5432/rag"
+    database_url: str = "postgresql://postgres:postgres@127.0.0.1:5432/rag"
     ollama_host: str = "http://localhost:11434"
 
     embedding_model: str = "nomic-embed-text"
