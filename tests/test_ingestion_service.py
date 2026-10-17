@@ -80,3 +80,15 @@ async def test_new_file_is_embedded_and_stored_in_one_call() -> None:
     assert filename == "a.txt"
     assert len(content_hash) == 64
     assert [c.content for c in chunks] == ["hello world"]
+
+
+async def test_same_text_with_different_line_endings_has_the_same_hash() -> None:
+    first, second = FakeDocuments(), FakeDocuments()
+    text = b"First paragraph.\n\nSecond paragraph."
+
+    await _service(first, FakeEmbeddings()).ingest("a.txt", "text/plain", text, 800, 100)
+    await _service(second, FakeEmbeddings()).ingest(
+        "b.txt", "text/plain", text.replace(b"\n", b"\r\n"), 800, 100
+    )
+
+    assert first.created[0][1] == second.created[0][1]

@@ -13,6 +13,7 @@ from local_rag_system.exceptions import (
     EmptyDocumentError,
     UnsupportedFileTypeError,
 )
+from local_rag_system.services.chunking_service import normalize_newlines
 
 SUPPORTED_EXTENSIONS = frozenset({".txt", ".md", ".markdown", ".pdf"})
 
@@ -65,7 +66,7 @@ async def extract_sections(filename: str, data: bytes) -> list[Section]:
         # pypdf is synchronous and CPU-bound; keep it off the event loop.
         sections = await asyncio.to_thread(_read_pdf, data)
     else:
-        text = _decode_text(data).strip()
+        text = normalize_newlines(_decode_text(data)).strip()
         sections = [Section(text=text)] if text else []
 
     if not sections:

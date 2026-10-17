@@ -43,7 +43,12 @@ class IngestionService:
                 f"File exceeds the {self._max_upload_bytes // (1024 * 1024)} MB limit."
             )
 
-        content_hash = hashlib.sha256(data).hexdigest()
+        sections = await extract_sections(filename, data)
+        # Hash the extracted text, not the bytes, so the same document saved with
+        # different line endings (or a BOM) is still recognised as a duplicate.
+        content_hash = hashlib.sha256(
+            "\n".join(section.text for section in sections).encode()
+        ).hexdigest()
         existing = await self._documents.find_by_hash(content_hash)
         if existing is not None:
             raise DuplicateDocumentError(
@@ -51,7 +56,6 @@ class IngestionService:
                 "Delete that document first to index it again with different settings."
             )
 
-        sections = await extract_sections(filename, data)
         pieces: list[tuple[str, int | None]] = [
             (chunk, section.page)
             for section in sections
