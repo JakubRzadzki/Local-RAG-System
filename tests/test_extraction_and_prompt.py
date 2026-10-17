@@ -2,7 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from local_rag_system.exceptions import EmptyDocumentError, UnsupportedFileTypeError
+from local_rag_system.exceptions import (
+    CorruptDocumentError,
+    EmptyDocumentError,
+    UnsupportedFileTypeError,
+)
 from local_rag_system.repositories.records import RetrievedChunk, WebResult
 from local_rag_system.schemas.chat import ChatMessage
 from local_rag_system.services.prompt_builder import build_messages, format_context
@@ -69,3 +73,14 @@ def test_failed_web_search_is_reported_to_the_model() -> None:
         "content"
     ]
     assert "failed" in system
+
+
+async def test_damaged_pdf_is_a_domain_error() -> None:
+    with pytest.raises(CorruptDocumentError):
+        await extract_sections("broken.pdf", b"%PDF-1.4 this is not a real pdf")
+
+
+async def test_truncated_pdf_is_a_domain_error() -> None:
+    data = (SAMPLE_DOCS / "python-tooling-cheatsheet.pdf").read_bytes()
+    with pytest.raises(CorruptDocumentError):
+        await extract_sections("cut.pdf", data[:200])

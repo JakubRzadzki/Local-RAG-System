@@ -17,7 +17,9 @@ from local_rag_system.dependencies import (
 )
 from local_rag_system.exceptions import (
     ConversationNotFoundError,
+    CorruptDocumentError,
     DocumentNotFoundError,
+    DuplicateDocumentError,
     RagError,
     UnsupportedFileTypeError,
 )
@@ -47,6 +49,10 @@ class FakeIngestion:
     async def ingest(self, filename: str, **_: object) -> DocumentRecord:
         if filename.endswith(".exe"):
             raise UnsupportedFileTypeError("nope")
+        if filename == "dup.txt":
+            raise DuplicateDocumentError("already uploaded")
+        if filename == "bad.pdf":
+            raise CorruptDocumentError("damaged")
         return _document()
 
     async def list_documents(self) -> list[DocumentRecord]:
@@ -196,3 +202,11 @@ def test_conversation_missing_is_404(conv_client: TestClient) -> None:
     assert conv_client.get("/api/conversations/9").status_code == 404
     assert conv_client.delete("/api/conversations/9").status_code == 404
     assert conv_client.delete("/api/conversations/1").status_code == 204
+
+
+def test_duplicate_upload_maps_to_409(client: TestClient) -> None:
+    assert client.post("/api/documents", files={"file": ("dup.txt", b"x")}).status_code == 409
+
+
+def test_damaged_pdf_maps_to_422(client: TestClient) -> None:
+    assert client.post("/api/documents", files={"file": ("bad.pdf", b"x")}).status_code == 422

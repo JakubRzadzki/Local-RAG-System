@@ -20,7 +20,10 @@ def chunk(i: int, content: str, embedding: list[float]) -> NewChunk:
 
 
 async def make_document(pool: AsyncConnectionPool, name: str = "a.txt") -> int:
-    return (await DocumentRepository(pool).create(name, "text/plain", 1, 800, 100)).id
+    document = await DocumentRepository(pool).create_with_chunks(
+        name, "text/plain", 1, 800, 100, content_hash=name, chunks=[]
+    )
+    return document.id
 
 
 async def test_nearest_chunk_comes_first_with_expected_scores(pool: AsyncConnectionPool) -> None:
