@@ -2,7 +2,7 @@
 
 # Local RAG System
 
-**Chat with your own documents, 100% locally.**
+**Chat with your own documents, 100% locally. Optionally add live web search.**
 
 Upload TXT / Markdown / PDF files, pick any model installed in [Ollama](https://ollama.com), and get streamed answers together with the exact source chunks that were used.
 
@@ -11,78 +11,151 @@ Upload TXT / Markdown / PDF files, pick any model installed in [Ollama](https://
 ![React](https://img.shields.io/badge/React-TypeScript-61DAFB?logo=react&logoColor=black)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?logo=postgresql&logoColor=white)
 ![Ollama](https://img.shields.io/badge/Ollama-local%20LLM-000000)
+![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)
 ![Typing](https://img.shields.io/badge/typing-mypy%20strict-blue)
 
-[Features](#features) · [Architecture](#architecture) · [Requirements](#requirements) · [Running](#running) · [Configuration](#configuration) · [API](#api) · [Development](#development)
+[Overview](#overview) · [Tech stack](#tech-stack) · [Architecture](#architecture) · [How it works](#how-it-works) · [Quick start](#quick-start) · [Tested on](#tested-on) · [API](#api) · [Development](#development)
 
 </div>
 
 ---
 
-The RAG pipeline is written from scratch: **no LangChain, no LlamaIndex**. Just Python, the official `ollama` client and PostgreSQL with `pgvector`.
+## Overview
 
-Each answer comes with the document, chunk number, PDF page and similarity score of every chunk the model saw, so you can verify where a claim comes from.
+A full-stack, ChatGPT-style application for asking questions about your own files. Everything runs on your machine: the embeddings, the vector search and the language model. The RAG (Retrieval-Augmented Generation) pipeline is written from scratch. **There is no LangChain and no LlamaIndex**, only Python, the official `ollama` client and PostgreSQL with `pgvector`.
 
-## Features
+Every answer shows which document, chunk, PDF page and similarity score each cited excerpt came from, so you can verify where a claim originates.
+
+### Features
 
 | Area | What you get |
 |---|---|
-| **Chat** | ChatGPT-style UI, token-by-token streaming, Markdown rendering |
+| **Chat** | ChatGPT-style UI, token-by-token streaming, Markdown rendering, stop button |
 | **Models** | Picker populated from your locally installed Ollama models (embedding-only models are filtered out) |
 | **Tuning** | Per request: `temperature`, `top_k`. Per upload: `chunk_size`, `chunk_overlap` |
 | **Sources** | Under every answer: filename, chunk index, PDF page, cosine similarity, chunk text |
+| **Web search** | Optional **Web** toggle: the question is also searched on DuckDuckGo and the results are cited like document excerpts (off by default) |
 | **Scoping** | Restrict a conversation to selected documents |
-| **History** | Conversations stored in PostgreSQL. Reopen, rename or delete them in the *Chats* tab. Partial answers are kept when you press stop |
-| **Preview** | Inspect every stored chunk of a file and jump from a cited source straight to its highlighted chunk |
+| **History** | Conversations are stored in PostgreSQL. Reopen, rename or delete them in the *Chats* tab. A partial answer is kept if you press stop |
+| **Preview** | Inspect every stored chunk of a file, or jump from a cited source straight to its highlighted chunk |
 | **Self-aware** | The assistant knows how the app works (built-in guide in `services/app_guide.py`), so you can ask *"How does this application work?"* |
-| **Chunking** | Paragraph-aware with overlap, per-page for PDFs |
-| **Typing** | Pydantic on the backend, strict TypeScript (no `any`) on the frontend |
+| **Robust streaming** | Keep-alive pings while a large model loads, so the connection does not drop |
+| **Docker** | One command runs database, backend and frontend |
+
+## Tech stack
+
+| Layer | Technology | Why |
+|---|---|---|
+| Frontend | React 18, TypeScript (strict, no `any`), Vite, `react-markdown` | Typed, fast dev loop, small bundle (~88 kB gzipped) |
+| Backend | Python 3.13, FastAPI, Pydantic v2, pydantic-settings | Async endpoints, request/response validation, typed settings |
+| LLM runtime | [Ollama](https://ollama.com) via the official `ollama` async client | Local models, embeddings and chat through one API |
+| Embeddings | `nomic-embed-text` (768 dimensions) with task prefixes | Small, fast, good retrieval quality |
+| Vector store | PostgreSQL 17 + `pgvector`, HNSW index, cosine distance | One database for vectors, documents and chat history |
+| DB driver | `psycopg` 3 with async connection pool | Native async, `pgvector` type support |
+| PDF parsing | `pypdf` | Pure Python, page-level extraction |
+| Web search | `ddgs` (DuckDuckGo) | No API key needed |
+| Serving | nginx (static files + streaming-safe `/api` proxy), Docker Compose | Production-like local setup |
+| Quality | `ruff` (PEP 8 + lint rules), `mypy --strict`, `pytest` (34 tests), `tsc --strict` | Typed and tested end to end |
+
+The codebase is about 4,000 lines of Python and TypeScript.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    UI["React + TypeScript<br/>(Vite)"] -- "HTTP / NDJSON" --> API
-
-    subgraph API ["FastAPI"]
-        direction TB
-        R["routers<br/><i>HTTP only</i>"] --> S["services<br/><i>business logic</i>"] --> D["repositories<br/><i>data access</i>"]
+    subgraph Browser
+        UI["React + TypeScript<br/>(Vite build served by nginx)"]
     end
 
-    D --> PG[("PostgreSQL<br/>+ pgvector")]
-    D --> OL["Ollama<br/>embeddings + chat"]
+    subgraph Docker["Docker Compose"]
+        NG["nginx :8080<br/>static files + /api proxy"]
+        subgraph API["FastAPI backend :8000"]
+            direction TB
+            R["routers<br/><i>HTTP only</i>"] --> S["services<br/><i>business logic</i>"] --> D["repositories<br/><i>data access</i>"]
+        end
+        PG[("PostgreSQL 17<br/>+ pgvector")]
+    end
+
+    OL["Ollama on the host<br/>chat + embeddings (GPU)"]
+    WEB["DuckDuckGo<br/>(only if Web is on)"]
+
+    UI -- "HTTP + NDJSON stream" --> NG --> R
+    D --> PG
+    D --> OL
+    D -.-> WEB
 ```
 
-| Layer | Responsibility |
-|---|---|
-| `routers/` | Routing and status codes only |
-| `services/` | Chunking, extraction, ingestion, prompt building, RAG orchestration |
-| `repositories/` | pgvector (documents, chunks) and the Ollama client |
+The backend follows strict separation of concerns:
 
-### RAG flow
+| Layer | Responsibility | Lives in |
+|---|---|---|
+| **Routers** | Routing and HTTP status codes only. No logic, no SQL | `routers/` |
+| **Services** | Chunking, text extraction, ingestion, prompt building, RAG orchestration | `services/` |
+| **Repositories** | All SQL/pgvector queries, the Ollama client and web search | `repositories/` |
+| **Schemas** | Pydantic request/response DTOs | `schemas/` |
 
-**Indexing (on upload)**
+Dependencies are wired with FastAPI's dependency injection (`dependencies.py`), so each layer can be replaced by a fake in tests. The API tests do exactly that and need neither a database nor Ollama.
+
+### Data model
 
 ```mermaid
-flowchart LR
-    A[Upload file] --> B[Extract text]
-    B --> C[Chunk<br/>size + overlap]
-    C --> D["Embed<br/>nomic-embed-text"]
-    D --> E[("pgvector<br/>HNSW index")]
+erDiagram
+    DOCUMENTS ||--o{ CHUNKS : "has"
+    CONVERSATIONS ||--o{ MESSAGES : "has"
+
+    DOCUMENTS {
+        int id PK
+        text filename
+        text content_type
+        int size_bytes
+        int chunk_count
+        int chunk_size
+        int chunk_overlap
+        timestamptz created_at
+    }
+    CHUNKS {
+        int id PK
+        int document_id FK
+        int chunk_index
+        int page
+        text content
+        vector768 embedding "HNSW cosine index"
+    }
+    CONVERSATIONS {
+        int id PK
+        text title
+        text model
+        timestamptz updated_at
+    }
+    MESSAGES {
+        int id PK
+        int conversation_id FK
+        text role
+        text content
+        jsonb sources
+    }
 ```
 
-**Answering (on question)**
+### Frontend structure
 
 ```mermaid
-flowchart LR
-    Q[Question] --> E["Embed query"]
-    E --> S[("Cosine top-k<br/>search")]
-    S --> P["Build prompt<br/>with numbered context"]
-    P --> L["Stream answer<br/>from chosen model"]
-    L --> A["Answer with<br/>citations [1], [2], ..."]
-```
+flowchart TB
+    App --> Sidebar
+    App --> TopBar["ModelSelect + SettingsPanel"]
+    App --> ChatWindow
+    App --> Composer["Composer (Web toggle)"]
+    App --> PreviewModal
+    Sidebar --> ConversationList
+    Sidebar --> DocumentList
+    Sidebar --> UploadZone
+    ChatWindow --> MessageBubble --> SourceList
 
-The model is instructed to cite excerpts as `[1]`, `[2]`, and so on, and to say so when the context does not contain the answer.
+    App -.-> useChat
+    App -.-> useModels
+    App -.-> useDocuments
+    App -.-> useConversations
+    useChat & useModels & useDocuments & useConversations --> client["api/client.ts<br/>typed fetch + NDJSON reader"]
+```
 
 <details>
 <summary><b>Project structure</b></summary>
@@ -93,69 +166,164 @@ src/local_rag_system/
 ├── database.py          async pool + schema
 ├── dependencies.py      dependency injection wiring
 ├── exceptions.py        domain errors -> HTTP status in main.py
-├── main.py              app factory
-├── routers/             health, models, documents, chat
-├── schemas/             Pydantic request/response DTOs
-├── services/            chunking, text extraction, embedding, ingestion, prompt builder, RAG
-└── repositories/        document_repository, chunk_repository, ollama_repository
+├── main.py              app factory, CORS, error mapping
+├── event_loop.py        SelectorEventLoop factory (psycopg async on Windows)
+├── routers/             health, models, documents, conversations, chat
+├── schemas/             Pydantic request/response DTOs and the chat event protocol
+├── services/            chunking, text extraction, embedding, ingestion, conversations,
+│                        prompt builder, app guide, RAG pipeline
+└── repositories/        document, chunk, conversation, ollama, web search
 
 frontend/src/
 ├── api/client.ts        typed fetch + NDJSON stream reader
-├── hooks/               useChat, useModels, useDocuments, useLocalStorage
-└── components/          Sidebar, UploadZone, DocumentList, ModelSelect, SettingsPanel,
-                         ChatWindow, MessageBubble, SourceList, Composer
+├── hooks/               useChat, useModels, useDocuments, useConversations, useLocalStorage
+└── components/          Sidebar, ConversationList, DocumentList, UploadZone, ModelSelect,
+                         SettingsPanel, ChatWindow, MessageBubble, SourceList, Composer,
+                         PreviewModal
 
 sample_docs/             ready-to-use test documents (English; TXT, MD, PDF)
-tests/                   pytest suite
+tests/                   pytest suite (34 tests)
+Dockerfile, docker-compose.yml, frontend/Dockerfile, frontend/nginx.conf
 ```
 
 </details>
 
-## Requirements
+## How it works
 
-- Python 3.13 and [uv](https://docs.astral.sh/uv/)
-- Node.js 20+
-- Docker (for PostgreSQL with pgvector)
-- [Ollama](https://ollama.com) running locally
+### 1. Indexing (on upload)
 
-### Ollama models
+```mermaid
+flowchart LR
+    A[Upload file] --> B["Extract text<br/>TXT / MD / PDF per page"]
+    B --> C["Chunk<br/>paragraph-aware<br/>size + overlap"]
+    C --> D["Embed in batches<br/>nomic-embed-text"]
+    D --> E[("pgvector<br/>HNSW index")]
+```
+
+- **Chunking** keeps paragraphs together where possible and carries an overlap (trimmed to a word boundary) into the next chunk. Paragraphs longer than the chunk size are split by characters. PDFs are chunked page by page, so every chunk knows its page number.
+- **Embedding** uses the `search_document:` prefix that `nomic-embed-text` was trained with. Embeddings are computed *before* anything is written, so a failed upload leaves nothing behind.
+
+### 2. Answering (on question)
+
+```mermaid
+flowchart LR
+    Q[Question] --> E["Embed query<br/>(search_query: prefix)"]
+    E --> S[("Cosine top-k<br/>search")]
+    W["Web search<br/>(optional)"]
+    Q -.-> W
+    S --> P["Build prompt:<br/>rules + app guide +<br/>numbered excerpts"]
+    W -.-> P
+    P --> L["Stream answer<br/>from chosen model"]
+    L --> A["Answer with<br/>citations [1], [2], ..."]
+    A --> H[("Save to<br/>chat history")]
+```
+
+The system prompt tells the model to:
+
+- answer document questions from the numbered excerpts and cite them as `[1]`, `[2]`, and say so when the excerpts do not contain the answer,
+- answer questions about the app itself from a built-in guide,
+- answer general questions (definitions, simple facts, coding help) from its own knowledge without refusing,
+- use web results for current facts and cite them with the same numbering.
+
+### 3. Streaming protocol
+
+The chat endpoint streams newline-delimited JSON, so the UI can show the sources first and then the text as it is generated.
+
+```mermaid
+sequenceDiagram
+    participant C as Browser
+    participant S as FastAPI
+    participant O as Ollama
+    C->>S: POST /api/chat
+    S-->>C: conversation (id, title)
+    S->>O: embed query
+    S-->>C: sources (documents + web)
+    S->>O: chat (stream)
+    loop while the model is loading or thinking
+        S-->>C: ping (every 10 s)
+    end
+    loop for each generated token
+        O-->>S: token
+        S-->>C: token
+    end
+    S-->>C: done
+    Note over S: answer saved to the conversation
+```
+
+Design details worth knowing:
+
+- Failures after streaming has started are reported in-band as an `error` event, because the HTTP status is already sent.
+- If you press stop, the partial answer is still saved (the save is shielded from cancellation).
+- `ping` events keep the connection alive while a large model is being loaded into memory. Without them, proxies and browsers may treat the silent connection as dead and show a *network error*.
+- On Windows, psycopg's async mode cannot use the default `ProactorEventLoop`, so the app runs on a `SelectorEventLoop` (`event_loop.py`).
+
+### 4. Web search and privacy
+
+The **Web** toggle is off by default. When it is on, **only the text of your question** is sent to DuckDuckGo, and the top 5 results (title, URL, snippet) are added to the prompt as numbered sources with links. Your documents are never sent anywhere. If the search fails, the assistant is told so and answers without it.
+
+> [!NOTE]
+> Web results are search-result snippets, not full pages. That is enough for definitions and news headlines, but not for data that only lives inside a page, such as an hourly weather table. In that case the model will point you to the sources instead of inventing numbers.
+
+## Quick start
+
+### Requirements
+
+- [Ollama](https://ollama.com) running on the host, with an embedding model and at least one chat model
+- Docker (for the one-command setup), or Python 3.13 + [uv](https://docs.astral.sh/uv/) + Node.js 20+ for local development
 
 ```bash
 ollama pull nomic-embed-text   # required: embeddings (768 dimensions)
 ollama pull gemma3:4b          # any chat model works; this is just an example
 ```
 
-Any installed model with the `completion` capability shows up in the UI model picker.
+Any installed model with the `completion` capability shows up in the model picker.
 
-> [!IMPORTANT]
-> If you change the embedding model, set `RAG_EMBEDDING_MODEL` and `RAG_EMBEDDING_DIM` and recreate the `chunks` table. The vector size is fixed per column.
-
-## Running
+### Option A: Docker (everything in containers)
 
 ```bash
-# 1. database
-docker compose up -d
+docker compose up -d --build
+```
 
-# 2. backend (http://127.0.0.1:8000, docs at /docs)
+Open **http://localhost:8080**. This starts PostgreSQL + pgvector, the FastAPI backend and an nginx container serving the frontend. Ollama stays on the host so it can use your GPU; the backend reaches it through `host.docker.internal`.
+
+```bash
+docker compose logs -f backend   # logs
+docker compose down              # stop (add -v to also delete the database)
+```
+
+### Option B: local development
+
+```bash
+# 1. database only
+docker compose up -d db
+
+# 2. backend (http://127.0.0.1:8000, interactive docs at /docs)
 uv sync
 uv run local-rag-system
 
-# 3. frontend (http://localhost:5173)
+# 3. frontend (http://localhost:5173, proxies /api to the backend)
 cd frontend
 npm install
 npm run dev
 ```
 
-Then drag the files from `sample_docs/` into the sidebar and ask, for example:
+> [!NOTE]
+> **Windows:** `uv run local-rag-system` configures the required `SelectorEventLoop` for you. If you start uvicorn manually, add `--loop local_rag_system.event_loop:selector_loop_factory`.
+
+### Try it
+
+Drag the files from `sample_docs/` into the *Documents* tab, then ask:
 
 - *How many vacation days does a NovaTech employee get?*
 - *Which planet has the strongest winds?*
 - *Which command runs tests until the first failure?*
+- *How does this application work?*
+- Switch **Web** on and ask about something recent.
 
-> [!NOTE]
-> **Windows:** psycopg's async mode needs a `SelectorEventLoop`. `uv run local-rag-system` configures this for you. If you start uvicorn manually, add `--loop local_rag_system.event_loop:selector_loop_factory`.
+> [!IMPORTANT]
+> If you change the embedding model, set `RAG_EMBEDDING_MODEL` and `RAG_EMBEDDING_DIM` and recreate the `chunks` table. The vector size is fixed per column.
 
-## Configuration
+### Configuration
 
 Environment variables (or a `.env` file), all optional:
 
@@ -170,9 +338,61 @@ Environment variables (or a `.env` file), all optional:
 | `RAG_MAX_UPLOAD_BYTES` | `20971520` (20 MB) |
 | `RAG_CORS_ORIGINS` | `["http://localhost:5173","http://127.0.0.1:5173"]` |
 
+## Tested on
+
+All numbers below were measured on the development machine during this project. They are indicative of this hardware and these models, not a formal benchmark.
+
+| | |
+|---|---|
+| **GPU** | NVIDIA GeForce RTX 5070 Ti Laptop GPU, 12 GB VRAM |
+| **OS** | Windows 11 Home |
+| **Runtime** | Ollama 0.32 (host), Docker Desktop for the database/backend/frontend containers |
+| **Models** | `gemma4:12b`, `gemma4:26b`, `qwen2.5-coder:14b` (chat), `nomic-embed-text` (embeddings) |
+
+**Generation speed** (single request, model already loaded, 200 tokens):
+
+| Model | Size on disk | Tokens / second | Notes |
+|---|---|---|---|
+| `gemma4:12b` | 7.6 GB | 21.6 | fits in 12 GB VRAM |
+| `gemma4:26b` | 18 GB | 31.8 | larger than VRAM, still the fastest in this test |
+| `qwen2.5-coder:14b` | 9.0 GB | 16.3 | 10.5 of 15.7 GB resident in VRAM when loaded |
+
+**RAG latency** through the full stack (nginx -> backend -> pgvector -> Ollama), warm model, one question over the sample documents:
+
+| Model | Sources shown after | First token after | Whole answer |
+|---|---|---|---|
+| `gemma4:12b` | ~2.2 s | ~2.7 s | ~5.1 s (50 tokens) |
+| `gemma4:26b` | ~2.3 s | ~3.1 s | ~5.4 s (40 tokens) |
+
+**Indexing** the four sample documents (TXT, MD, PDF, TXT) took between 0.2 and 0.8 s each, including extraction, chunking, embedding and storage. Embedding a batch of 32 chunks of about 150 tokens took roughly 1.5 s on the first call.
+
+What to expect:
+
+- The **first request after switching models** can take one to two minutes while Ollama loads the model into memory (the 26B model took about two minutes cold). The keep-alive pings exist for this reason.
+- Retrieval over this small corpus is fast; the model dominates the latency.
+
+Not tested: Linux and macOS, other GPUs, CPU-only inference, large corpora (thousands of documents) and concurrent users.
+
+## What was achieved
+
+- A complete RAG pipeline without any RAG framework: extraction, chunking, embedding, HNSW vector search, prompt construction and streamed generation.
+- Strict layering (routers -> services -> repositories) that makes the logic testable without a database or an LLM.
+- A usable chat product around it: model switching, parameter tuning, saved history, document preview, source inspection and optional web search.
+- Verified citations: the answer to *"How many vacation days does a NovaTech employee get?"* cites the exact handbook chunk, which you can open from the answer.
+- Full typing (`mypy --strict`, TypeScript `strict` with no `any`), PEP 8 enforced by `ruff`, and 34 automated tests.
+- A reproducible one-command deployment with Docker Compose, with nginx configured so the token stream is not buffered.
+
+### Known limitations
+
+- Single-user: there is no authentication.
+- Scanned PDFs are not supported (there is no OCR); they are rejected with a clear error.
+- Retrieval uses the last user message only, so follow-up questions like *"and the second one?"* retrieve poorly without more context.
+- Web results are snippets, not full pages (see above).
+- Large models that do not fit in VRAM are slow to load.
+
 ## API
 
-Interactive docs: `http://127.0.0.1:8000/docs`
+Interactive docs: `http://127.0.0.1:8000/docs` (local development).
 
 | Method | Path | Description |
 |---|---|---|
@@ -205,7 +425,7 @@ Request:
 {
   "model": "gemma3:4b",
   "messages": [{ "role": "user", "content": "What is top_k?" }],
-  "options": { "temperature": 0.2, "top_k": 4, "document_ids": null },
+  "options": { "temperature": 0.2, "top_k": 4, "document_ids": null, "web_search": false },
   "conversation_id": null
 }
 ```
@@ -214,35 +434,26 @@ The response is `application/x-ndjson`, one JSON event per line:
 
 ```jsonl
 {"type":"conversation","id":1,"title":"What is top_k?"}
-{"type":"sources","sources":[{"index":1,"document_id":3,"filename":"rag-explained.md","chunk_index":2,"page":null,"score":0.83,"content":"..."}]}
+{"type":"sources","sources":[{"index":1,"kind":"document","document_id":3,"filename":"rag-explained.md","chunk_index":2,"page":null,"url":null,"score":0.83,"content":"..."}]}
+{"type":"ping"}
 {"type":"token","content":"top"}
 {"type":"token","content":"_k"}
 {"type":"done"}
 ```
 
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant S as Server
-    C->>S: POST /api/chat
-    S-->>C: conversation (id, title)
-    S-->>C: sources (retrieved chunks)
-    loop for each generated token
-        S-->>C: token
-    end
-    S-->>C: done
-```
-
 - The first event announces the conversation (new when `conversation_id` is `null`).
+- Sources have `kind: "document"` or `kind: "web"`. Web sources carry a `url` and no chunk/score. Numbers are continuous, so documents come first and web results follow.
 - The client sends the message history. The server stores the last user message and the assistant's answer.
 - Retrieval uses the last user message.
-- Failures after streaming has started are reported in-band as `{"type":"error","message":"..."}`.
+- `ping` can be ignored by clients; `error` ends the stream.
 
 ## Development
 
 ```bash
 uv run ruff check . && uv run ruff format --check .   # PEP 8 / lint
 uv run mypy src                                       # strict typing
-uv run pytest                                         # tests (no DB or Ollama needed)
+uv run pytest                                         # 34 tests (no DB or Ollama needed)
 cd frontend && npm run typecheck && npm run build     # TypeScript strict
 ```
+
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/) and are kept small and atomic.
