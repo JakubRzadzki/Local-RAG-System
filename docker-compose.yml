@@ -7,6 +7,28 @@ services:
     ports: ["5432:5432"]
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rag"]
+      interval: 3s
+      retries: 20
+
+  backend:
+    build: .
+    environment:
+      RAG_DATABASE_URL: postgresql://postgres:postgres@db:5432/rag
+      # Ollama runs on the host machine.
+      RAG_OLLAMA_HOST: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports: ["8080:80"]
+    depends_on:
+      - backend
 
 volumes:
   pgdata:
