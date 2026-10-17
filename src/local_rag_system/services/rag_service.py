@@ -14,6 +14,7 @@ from local_rag_system.schemas.chat import (
     ConversationEvent,
     DoneEvent,
     ErrorEvent,
+    PingEvent,
     SourceOut,
     SourcesEvent,
     TokenEvent,
@@ -23,6 +24,34 @@ from local_rag_system.services.embedding_service import EmbeddingService
 from local_rag_system.services.prompt_builder import build_messages
 
 logger = logging.getLogger(__name__)
+
+HEARTBEAT_SECONDS = 10.0
+
+
+async def with_heartbeat(
+    events: AsyncIterator[ChatEvent], interval: float
+) -> AsyncIterator[ChatEvent]:
+    """Pass events through, emitting a :class:`PingEvent` whenever ``interval`` s pass quietly.
+
+    Loading a large model can take minutes without producing output; pings keep proxies
+    and browsers from treating the idle connection as dead.
+    """
+    pending: asyncio.Future[ChatEvent] = asyncio.ensure_future(anext(events))
+    try:
+        while True:
+            done, _ = await asyncio.wait({pending}, timeout=interval)
+            if not done:
+                yield PingEvent()
+                continue
+            try:
+                event = pending.result()
+            except StopAsyncIteration:
+                return
+            yield event
+            pending = asyncio.ensure_future(anext(events))
+    finally:
+        pending.cancel()
+        await events.aclose()  # type: ignore[attr-defined]
 
 
 class RagService:
@@ -40,7 +69,11 @@ class RagService:
         self._ollama = ollama
         self._embeddings = embeddings
 
-    async def stream_answer(self, request: ChatRequest) -> AsyncIterator[ChatEvent]:
+    def stream_answer(self, request: ChatRequest) -> AsyncIterator[ChatEvent]:
+        """Stream the answer, interleaved with keep-alive pings while waiting."""
+        return with_heartbeat(self._generate(request), HEARTBEAT_SECONDS)
+
+    async def _generate(self, request: ChatRequest) -> AsyncIterator[ChatEvent]:
         """Yield conversation, sources, token and done events.
 
         Failures are reported in-band as an :class:`ErrorEvent` because the HTTP
