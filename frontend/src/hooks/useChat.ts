@@ -48,7 +48,11 @@ export function useChat(onSaved: () => void): UseChat {
         sources: [],
         status: "streaming",
       };
-      const history = [...messages, userMessage].map(({ role, content }) => ({ role, content }));
+      // Skip empty answers (stopped before the first token) and failed ones: the backend
+      // rejects empty messages, which would break every later question in this chat.
+      const history = [...messages, userMessage]
+        .filter((m) => m.status !== "error" && m.content.trim() !== "")
+        .map(({ role, content }) => ({ role, content }));
 
       setMessages((all) => [...all, userMessage, assistantMessage]);
       setIsStreaming(true);
