@@ -56,7 +56,7 @@ Every answer shows which document, chunk, PDF page and similarity score each cit
 | PDF parsing | `pypdf` | Pure Python, page-level extraction |
 | Web search | `ddgs` (DuckDuckGo) | No API key needed |
 | Serving | nginx (static files + streaming-safe `/api` proxy), Docker Compose | Production-like local setup |
-| Quality | `ruff` (PEP 8 + lint rules), `mypy --strict`, `pytest` (78 tests incl. pgvector integration), `tsc --strict` | Typed and tested end to end |
+| Quality | `ruff` (PEP 8 + lint rules), `mypy --strict`, `pytest` (107 tests incl. pgvector integration), `tsc --strict` | Typed and tested end to end |
 
 The codebase is about 4,000 lines of Python and TypeScript.
 
@@ -183,7 +183,7 @@ frontend/src/
                          PreviewModal
 
 sample_docs/             ready-to-use test documents (English; TXT, MD, PDF)
-tests/                   pytest suite (78 tests); tests/integration needs Postgres
+tests/                   pytest suite (107 tests); tests/integration needs Postgres
 Dockerfile, docker-compose.yml, frontend/Dockerfile, frontend/nginx.conf
 ```
 
@@ -391,7 +391,7 @@ Not tested: Linux and macOS, other GPUs, CPU-only inference, large corpora (thou
 - Strict layering (routers -> services -> repositories) that makes the logic testable without a database or an LLM.
 - A usable chat product around it: model switching, parameter tuning, saved history, document preview, source inspection and optional web search.
 - Verified citations: the answer to *"How many vacation days does a NovaTech employee get?"* cites the exact handbook chunk, which you can open from the answer.
-- Full typing (`mypy --strict`, TypeScript `strict` with no `any`), PEP 8 enforced by `ruff`, and 78 automated tests, including integration tests against a real pgvector database.
+- Full typing (`mypy --strict`, TypeScript `strict` with no `any`), PEP 8 enforced by `ruff`, and 107 automated tests, including integration tests against a real pgvector database.
 - A reproducible one-command deployment with Docker Compose, with nginx configured so the token stream is not buffered.
 
 ### Known limitations
@@ -464,11 +464,33 @@ The response is `application/x-ndjson`, one JSON event per line:
 
 ```bash
 uv run ruff check . && uv run ruff format --check .   # PEP 8 / lint
-uv run mypy src                                       # strict typing
-uv run pytest                                         # 78 tests; the pgvector ones are skipped without Postgres
+uv run mypy src scripts                                    # strict typing
+uv run pytest                                         # 107 tests; the pgvector ones are skipped without Postgres
 cd frontend && npm run typecheck && npm run build     # TypeScript strict
 ```
 
-CI (`.github/workflows/ci.yml`) runs lint, `mypy`, the full test suite against a real `pgvector` service, and the frontend typecheck and build.
+### Continuous integration
+
+Everything below runs on every pull request, and on every push to `main`.
+
+| Workflow | Job | What it checks |
+|---|---|---|
+| `ci.yml` | Backend | `uv.lock` is in sync, `ruff` lint and format, `mypy --strict`, the whole test suite against a real `pgvector` service |
+| | Frontend | `tsc --strict` and the production build |
+| | Docker | Builds the images, starts the stack, waits for the healthchecks and calls `/api/health`, `/api/documents` and the UI through nginx |
+| `commits.yml` | Conventional Commits | Every commit message and the PR title follow [Conventional Commits](https://www.conventionalcommits.org/), subject at most 120 characters, no `fixup!`/`squash!`, no `Co-Authored-By` trailers or AI attribution |
+| `security.yml` | Secret scan | `gitleaks` over the full history |
+| | CodeQL | Static analysis for Python and TypeScript (public repositories only) |
+| | Dependency review | Blocks PRs that add dependencies with known high-severity advisories (public repositories only) |
+
+Besides these, Dependabot opens weekly update PRs for Python, npm, GitHub Actions and Docker dependencies, with `build:`/`ci:` prefixes so they pass the commit check. The PR template reminds you of the checklist.
+
+The commit rules are implemented in `scripts/check_commits.py` (standard library only) and have their own tests, so you can check your branch before pushing:
+
+```bash
+python scripts/check_commits.py --range origin/main..HEAD
+```
+
+To make the checks mandatory, enable branch protection on `main` in the repository settings and require the status checks *Backend*, *Frontend*, *Docker* and *Conventional Commits, no AI attribution*. GitHub only allows required checks that have run at least once.
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/) and are kept small and atomic.
