@@ -69,3 +69,29 @@ async def init_schema(pool: AsyncConnectionPool, settings: Settings) -> None:
         await conn.execute(
             "CREATE INDEX IF NOT EXISTS chunks_document_idx ON chunks (document_id)"
         )
+
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS conversations (
+                id SERIAL PRIMARY KEY,
+                title TEXT NOT NULL,
+                model TEXT NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )"""
+        )
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS messages (
+                id SERIAL PRIMARY KEY,
+                conversation_id INT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                sources JSONB NOT NULL DEFAULT '[]',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )"""
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS messages_conversation_idx "
+            "ON messages (conversation_id, id)"
+        )
