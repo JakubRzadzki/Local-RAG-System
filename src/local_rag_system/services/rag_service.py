@@ -4,10 +4,12 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 
-from local_rag_system.exceptions import ConversationNotFoundError, RagError
+from local_rag_system.exceptions import ConversationNotFoundError, RagError, WebSearchError
 from local_rag_system.repositories.chunk_repository import ChunkRepository
 from local_rag_system.repositories.conversation_repository import ConversationRepository
 from local_rag_system.repositories.ollama_repository import OllamaRepository
+from local_rag_system.repositories.records import WebResult
+from local_rag_system.repositories.web_search_repository import WebSearchRepository
 from local_rag_system.schemas.chat import (
     ChatEvent,
     ChatRequest,
@@ -26,6 +28,7 @@ from local_rag_system.services.prompt_builder import build_messages
 logger = logging.getLogger(__name__)
 
 HEARTBEAT_SECONDS = 10.0
+WEB_RESULTS = 5
 
 
 async def with_heartbeat(
@@ -63,7 +66,9 @@ class RagService:
         conversations: ConversationRepository,
         ollama: OllamaRepository,
         embeddings: EmbeddingService,
+        web_search: WebSearchRepository,
     ) -> None:
+        self._web_search = web_search
         self._chunks = chunks
         self._conversations = conversations
         self._ollama = ollama
@@ -107,11 +112,22 @@ class RagService:
                 )
                 for number, chunk in enumerate(retrieved, start=1)
             ]
+            web_results, web_failed = await self._search_web(request, query)
+            sources.extend(
+                SourceOut(
+                    index=len(retrieved) + number,
+                    kind="web",
+                    filename=result.title or result.url,
+                    url=result.url,
+                    content=result.snippet,
+                )
+                for number, result in enumerate(web_results or [], start=1)
+            )
             yield SourcesEvent(sources=sources)
 
             # Thinking models stall before the first token; disable it where supported.
             think = False if "thinking" in capabilities else None
-            messages = build_messages(request.messages, retrieved)
+            messages = build_messages(request.messages, retrieved, web_results, web_failed)
             async for token in self._ollama.stream_chat(
                 request.model, messages, request.options.temperature, think
             ):
@@ -126,6 +142,18 @@ class RagService:
         finally:
             if conversation_id is not None and answer:
                 await asyncio.shield(self._save_answer(conversation_id, "".join(answer), sources))
+
+    async def _search_web(
+        self, request: ChatRequest, query: str
+    ) -> tuple[list[WebResult] | None, bool]:
+        """Return ``(results, failed)``; ``results`` is ``None`` when web search is off."""
+        if not request.options.web_search:
+            return None, False
+        try:
+            return await self._web_search.search(query, WEB_RESULTS), False
+        except WebSearchError:
+            logger.warning("Web search failed", exc_info=True)
+            return [], True
 
     async def _open_conversation(self, request: ChatRequest, query: str) -> tuple[int, str]:
         if request.conversation_id is None:

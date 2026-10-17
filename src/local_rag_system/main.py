@@ -22,6 +22,7 @@ from local_rag_system.exceptions import (
     OllamaUnavailableError,
     RagError,
     UnsupportedFileTypeError,
+    WebSearchError,
 )
 from local_rag_system.routers import chat, conversations, documents, health, models
 
@@ -36,6 +37,7 @@ _STATUS_BY_ERROR: dict[type[Exception], int] = {
     EmptyDocumentError: status.HTTP_422_UNPROCESSABLE_CONTENT,
     InvalidChunkingError: status.HTTP_422_UNPROCESSABLE_CONTENT,
     OllamaUnavailableError: status.HTTP_503_SERVICE_UNAVAILABLE,
+    WebSearchError: status.HTTP_502_BAD_GATEWAY,
 }
 
 
