@@ -5,8 +5,17 @@ on:
     branches: [main]
   pull_request:
 
+# A new push to the same branch/PR cancels the run that is still in progress.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   backend:
+    name: Backend (lint, types, tests)
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -26,17 +35,20 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+      - name: Lockfile is in sync with pyproject.toml
+        run: uv lock --check
       - run: uv sync --frozen
       - name: Lint and format check
         run: |
           uv run ruff check .
           uv run ruff format --check .
       - name: Type check
-        run: uv run mypy src
+        run: uv run mypy src scripts
       - name: Tests (unit + pgvector integration)
         run: uv run pytest -v
 
   frontend:
+    name: Frontend (types, build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -51,3 +63,24 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
+
+  docker:
+    name: Docker (build and smoke test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start the stack
+        # --wait blocks until every service with a healthcheck is healthy.
+        run: docker compose up -d --build --wait --wait-timeout 240
+      - name: Smoke test through the nginx proxy
+        run: |
+          curl -fsS http://127.0.0.1:8080/api/health
+          curl -fsS http://127.0.0.1:8080/api/documents
+          curl -fsS http://127.0.0.1:8080/ | grep -q 'id="root"'
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
