@@ -87,3 +87,26 @@ class OllamaRepository:
             raise
         except (httpx.HTTPError, ConnectionError) as exc:
             raise OllamaUnavailableError(str(exc)) from exc
+
+    async def chat_once(
+        self,
+        model: str,
+        messages: Sequence[Mapping[str, str]],
+        think: bool | None,
+        max_tokens: int,
+    ) -> str:
+        """Run a short, deterministic, non-streaming completion."""
+        try:
+            response = await self._client.chat(
+                model=model,
+                messages=list(messages),
+                think=think,
+                options={"temperature": 0.0, "num_predict": max_tokens},
+            )
+        except ResponseError as exc:
+            if exc.status_code == 404:
+                raise ModelNotFoundError(model) from exc
+            raise
+        except (httpx.HTTPError, ConnectionError) as exc:
+            raise OllamaUnavailableError(str(exc)) from exc
+        return response.message.content or ""
