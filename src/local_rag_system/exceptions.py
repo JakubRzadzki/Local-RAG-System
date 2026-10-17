@@ -25,6 +25,10 @@ class DocumentNotFoundError(RagError):
     """The requested document does not exist."""
 
 
+class ConversationNotFoundError(RagError):
+    """The requested conversation does not exist."""
+
+
 class ModelNotFoundError(RagError):
     """The requested Ollama model is not available locally."""
 
