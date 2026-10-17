@@ -13,6 +13,7 @@ from ollama import AsyncClient
 from local_rag_system.config import get_settings
 from local_rag_system.database import create_pool, ensure_extension, init_schema
 from local_rag_system.exceptions import (
+    ConversationNotFoundError,
     DocumentNotFoundError,
     EmptyDocumentError,
     FileTooLargeError,
@@ -22,12 +23,13 @@ from local_rag_system.exceptions import (
     RagError,
     UnsupportedFileTypeError,
 )
-from local_rag_system.routers import chat, documents, health, models
+from local_rag_system.routers import chat, conversations, documents, health, models
 
 logging.basicConfig(level=logging.INFO)
 
 _STATUS_BY_ERROR: dict[type[Exception], int] = {
     DocumentNotFoundError: status.HTTP_404_NOT_FOUND,
+    ConversationNotFoundError: status.HTTP_404_NOT_FOUND,
     ModelNotFoundError: status.HTTP_404_NOT_FOUND,
     UnsupportedFileTypeError: status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
     FileTooLargeError: status.HTTP_413_CONTENT_TOO_LARGE,
@@ -73,7 +75,13 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_exception_handler(RagError, _rag_error_handler)
-    for router in (health.router, models.router, documents.router, chat.router):
+    for router in (
+        health.router,
+        models.router,
+        documents.router,
+        conversations.router,
+        chat.router,
+    ):
         app.include_router(router)
     return app
 
