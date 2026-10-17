@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     embedding_document_prefix: str = "search_document: "
     embedding_query_prefix: str = "search_query: "
 
+    # Measured with nomic-embed-text: relevant top hits score 0.74-0.84, unrelated <= 0.57.
+    min_score: float = Field(default=0.6, ge=0.0, le=1.0)
+
     default_chunk_size: int = 800
     default_chunk_overlap: int = 100
     max_upload_bytes: int = 20 * 1024 * 1024

@@ -64,6 +64,7 @@ def get_ingestion_service(
 def get_rag_service(
     pool: Annotated[AsyncConnectionPool, Depends(_pool)],
     ollama: OllamaRepoDep,
+    settings: SettingsDep,
     embeddings: Annotated[EmbeddingService, Depends(get_embedding_service)],
 ) -> RagService:
     return RagService(
@@ -72,6 +73,7 @@ def get_rag_service(
         ollama,
         embeddings,
         WebSearchRepository(),
+        settings.min_score,
     )
 
 
