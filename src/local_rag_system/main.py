@@ -53,6 +53,12 @@ async def _rag_error_handler(_: Request, exc: Exception) -> JSONResponse:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     settings = get_settings()
+    if not settings.min_score_is_calibrated:
+        logging.getLogger(__name__).warning(
+            "No similarity threshold is calibrated for embedding model %r; chunks are not "
+            "filtered by score. Set RAG_MIN_SCORE after checking the scores your model gives.",
+            settings.embedding_model,
+        )
     await ensure_extension(settings)
     pool = create_pool(settings)
     await pool.open()

@@ -73,7 +73,7 @@ def get_rag_service(
         ollama,
         embeddings,
         WebSearchRepository(),
-        settings.min_score,
+        settings.effective_min_score,
     )
 
 
