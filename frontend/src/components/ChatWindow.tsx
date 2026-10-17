@@ -11,7 +11,7 @@ interface Props {
 
 const SUGGESTIONS = [
   "How does this application work?",
-  "Ile dni urlopu przysługuje pracownikowi NovaTech?",
+  "How many vacation days does a NovaTech employee get?",
   "Which planet has the strongest winds?",
   "What is the difference between RAG and fine-tuning?",
 ];

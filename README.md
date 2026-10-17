@@ -50,7 +50,7 @@ frontend/src/
 ├── hooks/               useChat, useModels, useDocuments, useLocalStorage
 └── components/          Sidebar, UploadZone, DocumentList, ModelSelect, SettingsPanel,
                          ChatWindow, MessageBubble, SourceList, Composer
-sample_docs/             ready-to-use test documents (PL + EN; TXT, MD, PDF)
+sample_docs/             ready-to-use test documents (English; TXT, MD, PDF)
 tests/                   pytest suite
 ```
 
@@ -95,7 +95,7 @@ npm run dev
 
 Then drag the files from `sample_docs/` into the sidebar and ask, for example:
 
-- *Ile dni urlopu przysługuje pracownikowi NovaTech?*
+- *How many vacation days does a NovaTech employee get?*
 - *Which planet has the strongest winds?*
 - *Which command runs tests until the first failure?*
 
