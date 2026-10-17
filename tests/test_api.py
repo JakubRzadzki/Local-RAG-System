@@ -3,20 +3,32 @@
 import json
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime
+from typing import cast
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from local_rag_system.dependencies import (
+    get_conversation_service,
     get_ingestion_service,
     get_model_service,
     get_rag_service,
 )
-from local_rag_system.exceptions import DocumentNotFoundError, RagError, UnsupportedFileTypeError
+from local_rag_system.exceptions import (
+    ConversationNotFoundError,
+    DocumentNotFoundError,
+    RagError,
+    UnsupportedFileTypeError,
+)
 from local_rag_system.main import _rag_error_handler
-from local_rag_system.repositories.records import DocumentRecord, OllamaModelRecord
-from local_rag_system.routers import chat, documents, health, models
+from local_rag_system.repositories.records import (
+    ConversationRecord,
+    DocumentRecord,
+    MessageRecord,
+    OllamaModelRecord,
+)
+from local_rag_system.routers import chat, conversations, documents, health, models
 from local_rag_system.schemas.chat import (
     ChatEvent,
     ChatRequest,
@@ -133,3 +145,54 @@ def test_chat_streams_ndjson_events(client: TestClient) -> None:
 def test_chat_rejects_conversation_ending_with_assistant(client: TestClient) -> None:
     payload = {"model": "m", "messages": [{"role": "assistant", "content": "hi"}]}
     assert client.post("/api/chat", json=payload).status_code == 422
+
+
+class FakeConversations:
+    async def list_conversations(self) -> list[ConversationRecord]:
+        return [_conversation()]
+
+    async def get_with_messages(
+        self, conversation_id: int
+    ) -> tuple[ConversationRecord, list[MessageRecord]]:
+        if conversation_id != 1:
+            raise ConversationNotFoundError("missing")
+        message = MessageRecord(1, 1, "assistant", "Hi", [], datetime.now(UTC))
+        return _conversation(), [message]
+
+    async def rename(self, conversation_id: int, title: str) -> ConversationRecord:
+        return _conversation(title)
+
+    async def delete(self, conversation_id: int) -> None:
+        if conversation_id != 1:
+            raise ConversationNotFoundError("missing")
+
+
+def _conversation(title: str = "Hello") -> ConversationRecord:
+    now = datetime.now(UTC)
+    return ConversationRecord(1, title, "llama:8b", now, now)
+
+
+@pytest.fixture
+def conv_client(client: TestClient) -> TestClient:
+    app = cast(FastAPI, client.app)
+    app.include_router(conversations.router)
+    app.dependency_overrides[get_conversation_service] = lambda: FakeConversations()
+    return client
+
+
+def test_conversation_list_and_detail(conv_client: TestClient) -> None:
+    assert conv_client.get("/api/conversations").json()[0]["title"] == "Hello"
+    detail = conv_client.get("/api/conversations/1").json()
+    assert [m["role"] for m in detail["messages"]] == ["assistant"]
+
+
+def test_conversation_rename_and_validation(conv_client: TestClient) -> None:
+    ok = conv_client.patch("/api/conversations/1", json={"title": "New"})
+    assert ok.json()["title"] == "New"
+    assert conv_client.patch("/api/conversations/1", json={"title": ""}).status_code == 422
+
+
+def test_conversation_missing_is_404(conv_client: TestClient) -> None:
+    assert conv_client.get("/api/conversations/9").status_code == 404
+    assert conv_client.delete("/api/conversations/9").status_code == 404
+    assert conv_client.delete("/api/conversations/1").status_code == 204
