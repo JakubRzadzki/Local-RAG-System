@@ -7,7 +7,11 @@ from pathlib import PurePath
 
 from pypdf import PdfReader
 
-from local_rag_system.exceptions import EmptyDocumentError, UnsupportedFileTypeError
+from local_rag_system.exceptions import (
+    CorruptDocumentError,
+    EmptyDocumentError,
+    UnsupportedFileTypeError,
+)
 
 SUPPORTED_EXTENSIONS = frozenset({".txt", ".md", ".markdown", ".pdf"})
 
@@ -28,12 +32,19 @@ def _decode_text(data: bytes) -> str:
 
 
 def _read_pdf(data: bytes) -> list[Section]:
-    reader = PdfReader(io.BytesIO(data))
-    sections = (
-        Section(text=(page.extract_text() or "").strip(), page=number)
-        for number, page in enumerate(reader.pages, start=1)
-    )
-    return [section for section in sections if section.text]
+    try:
+        reader = PdfReader(io.BytesIO(data))
+        if reader.is_encrypted:
+            raise CorruptDocumentError("The PDF is password-protected.")
+        sections = (
+            Section(text=(page.extract_text() or "").strip(), page=number)
+            for number, page in enumerate(reader.pages, start=1)
+        )
+        return [section for section in sections if section.text]
+    except CorruptDocumentError:
+        raise
+    except Exception as exc:  # pypdf raises many unrelated types for damaged files
+        raise CorruptDocumentError("The PDF is damaged or could not be read.") from exc
 
 
 async def extract_sections(filename: str, data: bytes) -> list[Section]:
