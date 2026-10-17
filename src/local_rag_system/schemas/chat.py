@@ -64,6 +64,12 @@ class TokenEvent(BaseModel):
     content: str
 
 
+class PingEvent(BaseModel):
+    """Keep-alive sent while waiting for the model (e.g. while it loads)."""
+
+    type: Literal["ping"] = "ping"
+
+
 class DoneEvent(BaseModel):
     type: Literal["done"] = "done"
 
@@ -73,7 +79,7 @@ class ErrorEvent(BaseModel):
     message: str
 
 
-ChatEvent = ConversationEvent | SourcesEvent | TokenEvent | DoneEvent | ErrorEvent
+ChatEvent = ConversationEvent | SourcesEvent | TokenEvent | PingEvent | DoneEvent | ErrorEvent
 
 
 def encode_event(event: ChatEvent) -> str:
