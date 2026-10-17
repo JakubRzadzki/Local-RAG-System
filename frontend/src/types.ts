@@ -1,0 +1,77 @@
+/** Types mirroring the backend Pydantic schemas. */
+
+export interface OllamaModel {
+  name: string;
+  size_bytes: number;
+  family: string;
+  parameter_size: string;
+  quantization: string;
+  capabilities: string[];
+  supports_chat: boolean;
+}
+
+export interface ModelsResponse {
+  models: OllamaModel[];
+  embedding_model: string;
+  embedding_model_installed: boolean;
+}
+
+export interface RagDocument {
+  id: number;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  chunk_count: number;
+  chunk_size: number;
+  chunk_overlap: number;
+  created_at: string;
+}
+
+export interface Source {
+  index: number;
+  document_id: number;
+  filename: string;
+  chunk_index: number;
+  page: number | null;
+  score: number;
+  content: string;
+}
+
+export interface ChatOptions {
+  temperature: number;
+  top_k: number;
+  document_ids: number[] | null;
+}
+
+export interface ChatRequestMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ChatRequest {
+  model: string;
+  messages: ChatRequestMessage[];
+  options: ChatOptions;
+}
+
+export type ChatEvent =
+  | { type: "sources"; sources: Source[] }
+  | { type: "token"; content: string }
+  | { type: "done" }
+  | { type: "error"; message: string };
+
+export interface UploadSettings {
+  chunkSize: number;
+  chunkOverlap: number;
+}
+
+export type MessageStatus = "streaming" | "done" | "error";
+
+export interface UiMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sources: Source[];
+  status: MessageStatus;
+  error?: string;
+}
