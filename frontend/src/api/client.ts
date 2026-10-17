@@ -1,6 +1,9 @@
 import type {
   ChatEvent,
   ChatRequest,
+  Conversation,
+  ConversationDetail,
+  DocumentPreview,
   ModelsResponse,
   RagDocument,
   UploadSettings,
@@ -58,6 +61,24 @@ export function uploadDocument(file: File, settings: UploadSettings): Promise<Ra
 
 export const deleteDocument = (id: number): Promise<void> =>
   request(`/api/documents/${id}`, { method: "DELETE" });
+
+export const getDocumentPreview = (id: number): Promise<DocumentPreview> =>
+  request(`/api/documents/${id}/preview`);
+
+export const getConversations = (): Promise<Conversation[]> => request("/api/conversations");
+
+export const getConversation = (id: number): Promise<ConversationDetail> =>
+  request(`/api/conversations/${id}`);
+
+export const renameConversation = (id: number, title: string): Promise<Conversation> =>
+  request(`/api/conversations/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+
+export const deleteConversation = (id: number): Promise<void> =>
+  request(`/api/conversations/${id}`, { method: "DELETE" });
 
 /** POST a chat request and invoke `onEvent` for every NDJSON event as it arrives. */
 export async function streamChat(
