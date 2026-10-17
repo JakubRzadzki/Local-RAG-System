@@ -5,7 +5,7 @@ from collections.abc import Sequence
 import numpy as np
 from psycopg_pool import AsyncConnectionPool
 
-from local_rag_system.repositories.records import NewChunk, RetrievedChunk
+from local_rag_system.repositories.records import ChunkPreview, NewChunk, RetrievedChunk
 
 
 class ChunkRepository:
@@ -58,3 +58,14 @@ class ChunkRepository:
             )
             for r in rows
         ]
+
+    async def list_by_document(self, document_id: int) -> list[ChunkPreview]:
+        """Return all chunks of a document in reading order."""
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "SELECT chunk_index, page, content FROM chunks "
+                "WHERE document_id = %s ORDER BY chunk_index",
+                (document_id,),
+            )
+            rows = await cur.fetchall()
+        return [ChunkPreview(chunk_index=r[0], page=r[1], content=r[2]) for r in rows]
