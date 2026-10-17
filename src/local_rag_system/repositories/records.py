@@ -43,3 +43,29 @@ class OllamaModelRecord:
     parameter_size: str
     quantization: str
     capabilities: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ConversationRecord:
+    id: int
+    title: str
+    model: str
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class MessageRecord:
+    id: int
+    conversation_id: int
+    role: str
+    content: str
+    sources: list[dict[str, object]]
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkPreview:
+    chunk_index: int
+    page: int | None
+    content: str
