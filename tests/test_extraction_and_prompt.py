@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from local_rag_system.exceptions import EmptyDocumentError, UnsupportedFileTypeError
-from local_rag_system.repositories.records import RetrievedChunk
+from local_rag_system.repositories.records import RetrievedChunk, WebResult
 from local_rag_system.schemas.chat import ChatMessage
 from local_rag_system.services.prompt_builder import build_messages, format_context
 from local_rag_system.services.text_extraction_service import extract_sections
@@ -49,3 +49,23 @@ def test_messages_start_with_system_prompt_and_keep_history() -> None:
     assert messages[0]["role"] == "system"
     assert "hello" in messages[0]["content"]
     assert messages[1] == {"role": "user", "content": "q"}
+
+
+def test_web_results_are_numbered_after_document_excerpts() -> None:
+    web = [WebResult(title="Weather", url="https://w.example", snippet="Sunny, 21C")]
+    messages = build_messages([ChatMessage(role="user", content="q")], [_chunk(page=None)], web)
+    system = messages[0]["content"]
+    assert "[2] (Weather - https://w.example)" in system
+    assert "Sunny, 21C" in system
+
+
+def test_disabled_web_search_points_user_to_the_toggle() -> None:
+    system = build_messages([ChatMessage(role="user", content="q")], [], None)[0]["content"]
+    assert "Web toggle" in system
+
+
+def test_failed_web_search_is_reported_to_the_model() -> None:
+    system = build_messages([ChatMessage(role="user", content="q")], [], [], web_failed=True)[0][
+        "content"
+    ]
+    assert "failed" in system
