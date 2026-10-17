@@ -21,10 +21,10 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 ADMIN_URL = os.environ.get(
-    "RAG_TEST_ADMIN_URL", "postgresql://postgres:postgres@localhost:5432/postgres"
+    "RAG_TEST_ADMIN_URL", "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
 )
 TEST_URL = os.environ.get(
-    "RAG_TEST_DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/rag_test"
+    "RAG_TEST_DATABASE_URL", "postgresql://postgres:postgres@127.0.0.1:5432/rag_test"
 )
 
 
