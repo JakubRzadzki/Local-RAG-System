@@ -1,2 +1,1 @@
-def main() -> None:
-    print("Hello from local-rag-system!")
+"""Local RAG System: a fully local retrieval-augmented generation backend."""
