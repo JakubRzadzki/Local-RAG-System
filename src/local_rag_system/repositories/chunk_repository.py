@@ -7,6 +7,15 @@ from psycopg_pool import AsyncConnectionPool
 
 from local_rag_system.repositories.records import ChunkPreview, NewChunk, RetrievedChunk
 
+INSERT_CHUNK = """
+    INSERT INTO chunks (document_id, chunk_index, content, page, embedding)
+    VALUES (%s, %s, %s, %s, %s)"""
+
+
+def chunk_rows(document_id: int, chunks: Sequence[NewChunk]) -> list[tuple[object, ...]]:
+    """Parameter tuples for :data:`INSERT_CHUNK`."""
+    return [(document_id, c.chunk_index, c.content, c.page, np.array(c.embedding)) for c in chunks]
+
 
 class ChunkRepository:
     """Reads and writes the ``chunks`` table using pgvector."""
@@ -15,16 +24,8 @@ class ChunkRepository:
         self._pool = pool
 
     async def add_many(self, document_id: int, chunks: Sequence[NewChunk]) -> None:
-        rows = [
-            (document_id, c.chunk_index, c.content, c.page, np.array(c.embedding)) for c in chunks
-        ]
         async with self._pool.connection() as conn, conn.cursor() as cur:
-            await cur.executemany(
-                """
-                    INSERT INTO chunks (document_id, chunk_index, content, page, embedding)
-                    VALUES (%s, %s, %s, %s, %s)""",
-                rows,
-            )
+            await cur.executemany(INSERT_CHUNK, chunk_rows(document_id, chunks))
 
     async def search(
         self,
