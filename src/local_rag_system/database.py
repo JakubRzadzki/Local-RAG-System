@@ -47,8 +47,14 @@ async def init_schema(pool: AsyncConnectionPool, settings: Settings) -> None:
             "chunk_count INT NOT NULL DEFAULT 0",
             "chunk_size INT NOT NULL DEFAULT 800",
             "chunk_overlap INT NOT NULL DEFAULT 100",
+            "content_hash TEXT",
         ):
             await conn.execute(f"ALTER TABLE documents ADD COLUMN IF NOT EXISTS {column}")
+
+        await conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS documents_content_hash_idx "
+            "ON documents (content_hash)"
+        )
 
         await conn.execute(
             f"""
